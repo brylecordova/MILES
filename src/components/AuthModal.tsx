@@ -1,0 +1,166 @@
+import React, { useState } from 'react';
+import { X } from 'lucide-react';
+import type { UserAccount } from '../types/training';
+import { api, setLearnerToken } from '../utils/api';
+
+interface AuthModalProps {
+  open: boolean;
+  initialMode?: 'login' | 'register';
+  onClose: () => void;
+  onSuccess: (user: UserAccount) => void;
+}
+
+export const AuthModal: React.FC<AuthModalProps> = ({
+  open,
+  initialMode = 'register',
+  onClose,
+  onSuccess,
+}) => {
+  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  if (!open) return null;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const result =
+        mode === 'register'
+          ? await api.registerLearner(name, email, password)
+          : await api.loginLearner(email, password);
+      setLearnerToken(result.token);
+      onSuccess(result.user);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Authentication failed.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-xs sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-modal-title"
+    >
+      <div className="w-full max-w-md rounded-t-3xl border border-slate-200 bg-white p-6 shadow-xl sm:rounded-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 id="auth-modal-title" className="text-xl font-bold text-slate-900">
+            {mode === 'register' ? 'Create Learner Account' : 'Sign In to CertiField'}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close account dialog"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mb-5 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+          <button
+            type="button"
+            onClick={() => {
+              setMode('register');
+              setError(null);
+            }}
+            className={`min-h-[40px] rounded-lg text-sm font-medium transition-colors ${
+              mode === 'register' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+            }`}
+          >
+            Register
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode('login');
+              setError(null);
+            }}
+            className={`min-h-[40px] rounded-lg text-sm font-medium transition-colors ${
+              mode === 'login' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+            }`}
+          >
+            Sign In
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === 'register' && (
+            <div>
+              <label htmlFor="auth-name" className="mb-1.5 block text-sm font-medium text-slate-700">
+                Full Name (printed on certificates)
+              </label>
+              <input
+                id="auth-name"
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Alex Rivera"
+                className="min-h-[44px] w-full rounded-xl border border-slate-300 px-3.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-700/20"
+              />
+            </div>
+          )}
+
+          <div>
+            <label htmlFor="auth-email" className="mb-1.5 block text-sm font-medium text-slate-700">
+              Email Address
+            </label>
+            <input
+              id="auth-email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="alex@company.com"
+              className="min-h-[44px] w-full rounded-xl border border-slate-300 px-3.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-700/20"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="auth-password" className="mb-1.5 block text-sm font-medium text-slate-700">
+              Password
+            </label>
+            <input
+              id="auth-password"
+              type="password"
+              required
+              minLength={6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 6 characters"
+              className="min-h-[44px] w-full rounded-xl border border-slate-300 px-3.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-700/20"
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="min-h-[48px] w-full rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:opacity-60"
+          >
+            {loading
+              ? 'Please wait...'
+              : mode === 'register'
+              ? 'Create Account'
+              : 'Sign In'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};

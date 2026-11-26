@@ -1,0 +1,6 @@
+{
+  "name": "CertiField",
+  "description": "Mobile field training and certification platform with offline course downloads, configurable quizzes, admin curriculum studio, and verifiable PDF certificates.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
