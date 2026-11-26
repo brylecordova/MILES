@@ -1,4 +1,5 @@
 import type {
+  AdminAnalyticsReport,
   CertificateRecord,
   Course,
   CourseSubmission,
@@ -137,6 +138,8 @@ export const api = {
     apiFetch<{ submissions: CourseSubmission[] }>('/api/submissions/mine', {}, 'learner'),
   listAllSubmissions: () =>
     apiFetch<{ submissions: CourseSubmission[] }>('/api/admin/submissions', {}, 'admin'),
+  getAdminAnalytics: () =>
+    apiFetch<{ report: AdminAnalyticsReport }>('/api/admin/analytics', {}, 'admin'),
   reviewSubmission: (id: string, status: 'approved' | 'rejected', adminFeedback?: string) =>
     apiFetch<{ submission: CourseSubmission; certificate?: CertificateRecord }>(
       `/api/admin/submissions/${id}/review`,
@@ -159,3 +162,93 @@ export const api = {
       'learner'
     ),
 };
+
+export async function downloadAndroidProjectZip(): Promise<void> {
+  const fetchZip = async () => {
+    const res = await fetch('/api/android-project.zip', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
+    if (!res.ok) {
+      throw new Error(`Download failed (${res.status}).`);
+    }
+    return res.arrayBuffer();
+  };
+
+  let buffer = await fetchZip();
+  let bytes = new Uint8Array(buffer);
+
+  // If a stale Service Worker intercepted the request and returned HTML, unregister and retry once
+  if (bytes.length < 22 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+    buffer = await fetchZip();
+    bytes = new Uint8Array(buffer);
+  }
+
+  if (bytes.length < 22 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+    throw new Error('The server did not return a valid ZIP archive. Please refresh the page and try again.');
+  }
+
+  const blob = new Blob([buffer], { type: 'application/zip' });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = 'certifield-android-app.zip';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+}
+
+export async function uploadAdminApk(
+  file: File
+): Promise<{ url: string; fileName: string; sizeBytes: number }> {
+  const headers = new Headers();
+  headers.set('Content-Type', 'application/vnd.android.package-archive');
+  headers.set('x-file-name', file.name);
+  if (adminToken) {
+    headers.set('Authorization', `Bearer ${adminToken}`);
+  }
+  const res = await fetch('/api/admin/upload-apk', {
+    method: 'POST',
+    headers,
+    body: file,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data as { error?: string }).error || `APK upload failed (${res.status})`);
+  }
+  return data as { url: string; fileName: string; sizeBytes: number };
+}
+
+export async function downloadUploadedApk(fallbackName = 'certifield-android.apk'): Promise<void> {
+  const res = await fetch('/api/android-app.apk', {
+    cache: 'no-store',
+    credentials: 'same-origin',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error || `APK download failed (${res.status}).`);
+  }
+  const buffer = await res.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length < 64 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+    throw new Error('Downloaded file is not a valid Android APK package.');
+  }
+  const disposition = res.headers.get('content-disposition') || '';
+  const match = disposition.match(/filename="([^"]+)"/);
+  const fileName = match?.[1] || fallbackName;
+
+  const blob = new Blob([buffer], { type: 'application/vnd.android.package-archive' });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+}

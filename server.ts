@@ -12,12 +12,14 @@ import type {
   CertificateElement,
   CertificateRecord,
   Course,
+  CourseDownloadEvent,
   CourseModule,
   CourseSubmission,
   LessonBlock,
   SystemBranding,
   UserAccount,
 } from './src/types/training.ts';
+import { buildAdminAnalyticsReport } from './src/utils/analytics.ts';
 import {
   getDefaultCertificateDesign,
   getDefaultSystemBranding,
@@ -323,6 +325,18 @@ async function startServer() {
       const rawName = typeof req.body?.systemName === 'string' ? req.body.systemName.trim() : '';
       const rawTagline = typeof req.body?.tagline === 'string' ? req.body.tagline.trim() : '';
       const rawIcon = typeof req.body?.iconUrl === 'string' ? req.body.iconUrl.trim() : '';
+      const rawMode = req.body?.appDistributionMode;
+      const appDistributionMode =
+        rawMode === 'play_store' || rawMode === 'apk_download'
+          ? rawMode
+          : current.appDistributionMode ?? 'apk_download';
+      const rawApkUrl = typeof req.body?.apkUrl === 'string' ? req.body.apkUrl.trim() : '';
+      const rawApkFileName =
+        typeof req.body?.apkFileName === 'string' ? req.body.apkFileName.trim() : '';
+      const rawApkVersion =
+        typeof req.body?.apkVersion === 'string' ? req.body.apkVersion.trim() : '';
+      const rawPlayStoreUrl =
+        typeof req.body?.playStoreUrl === 'string' ? req.body.playStoreUrl.trim() : '';
 
       if (!rawName) {
         res.status(400).json({ error: 'System name is required.' });
@@ -332,12 +346,34 @@ async function startServer() {
         res.status(400).json({ error: 'System icon URL must be a valid relative or HTTPS URL.' });
         return;
       }
+      if (rawApkUrl && !isSafeMediaUrl(rawApkUrl)) {
+        res.status(400).json({ error: 'APK URL must be a valid relative or HTTPS URL.' });
+        return;
+      }
+      if (rawPlayStoreUrl) {
+        let validPlayUrl = false;
+        try {
+          const parsed = new URL(rawPlayStoreUrl);
+          validPlayUrl = parsed.protocol === 'https:' || parsed.protocol === 'http:';
+        } catch {
+          validPlayUrl = false;
+        }
+        if (!validPlayUrl) {
+          res.status(400).json({ error: 'Play Store URL must start with https:// or http://.' });
+          return;
+        }
+      }
 
       const branding: SystemBranding = {
         systemName: rawName.slice(0, 60),
         tagline: (rawTagline || defaults.tagline).slice(0, 180),
         iconUrl: rawIcon || current.iconUrl || defaults.iconUrl,
         accentColor: sanitizeHexColor(req.body?.accentColor, current.accentColor || defaults.accentColor),
+        appDistributionMode,
+        apkUrl: rawApkUrl,
+        apkFileName: rawApkFileName.slice(0, 120),
+        apkVersion: (rawApkVersion || '1.0.0').slice(0, 32),
+        playStoreUrl: rawPlayStoreUrl.slice(0, 500),
         updatedAt: new Date().toISOString(),
       };
       await db.saveSystemBranding(branding);
@@ -345,6 +381,50 @@ async function startServer() {
     } catch (err) {
       console.error('Branding update error:', err);
       res.status(500).json({ error: 'Failed to save system branding.' });
+    }
+  });
+
+  app.get('/api/android-app.apk', async (_req, res) => {
+    try {
+      const branding = await db.getSystemBranding();
+      const apkUrl = branding.apkUrl?.trim() || '';
+      if (!apkUrl) {
+        res.status(404).json({ error: 'No APK release has been uploaded yet.' });
+        return;
+      }
+      if (apkUrl.startsWith('http://') || apkUrl.startsWith('https://')) {
+        res.redirect(apkUrl);
+        return;
+      }
+      if (!apkUrl.startsWith('/uploads/')) {
+        res.status(404).json({ error: 'APK file not found.' });
+        return;
+      }
+      const fileName = path.basename(apkUrl);
+      const targetPath = path.resolve(UPLOADS_DIR, fileName);
+      if (!targetPath.startsWith(UPLOADS_DIR + path.sep) || !fs.existsSync(targetPath)) {
+        res.status(404).json({ error: 'Uploaded APK file was not found on server.' });
+        return;
+      }
+      const slug =
+        (branding.systemName || 'certifield')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '') || 'certifield';
+      const downloadName = branding.apkFileName?.endsWith('.apk')
+        ? branding.apkFileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+        : `${slug}-android.apk`;
+      const buffer = fs.readFileSync(targetPath);
+      res.status(200);
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+      res.setHeader('Content-Length', String(buffer.length));
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.end(buffer);
+    } catch (err) {
+      console.error('APK download error:', err);
+      res.status(500).json({ error: 'Unable to download Android APK.' });
     }
   });
 
@@ -569,6 +649,51 @@ async function startServer() {
     }
   });
 
+  app.post(
+    '/api/admin/upload-apk',
+    requireAdmin,
+    express.raw({
+      type: ['application/vnd.android.package-archive', 'application/octet-stream'],
+      limit: '120mb',
+    }),
+    (req, res) => {
+      try {
+        const buffer = req.body;
+        if (!Buffer.isBuffer(buffer) || buffer.byteLength < 64) {
+          res.status(400).json({ error: 'Please select a valid .apk file to upload.' });
+          return;
+        }
+        // Android APK packages are ZIP archives starting with PK (0x50 0x4B)
+        if (buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
+          res.status(400).json({ error: 'Invalid APK file format. Please upload the .apk built by GitHub Actions.' });
+          return;
+        }
+        const rawHeaderName =
+          typeof req.headers['x-file-name'] === 'string' ? req.headers['x-file-name'] : 'app-debug.apk';
+        const cleanBase =
+          path
+            .basename(rawHeaderName)
+            .replace(/[^a-zA-Z0-9._-]/g, '_')
+            .replace(/\.apk$/i, '') || 'certifield-android';
+        const storedFileName = `${crypto.randomUUID()}-${cleanBase}.apk`;
+        const targetPath = path.resolve(UPLOADS_DIR, storedFileName);
+        if (!targetPath.startsWith(UPLOADS_DIR + path.sep)) {
+          res.status(400).json({ error: 'Invalid upload path.' });
+          return;
+        }
+        fs.writeFileSync(targetPath, buffer);
+        res.status(201).json({
+          url: `/uploads/${storedFileName}`,
+          fileName: `${cleanBase}.apk`,
+          sizeBytes: buffer.byteLength,
+        });
+      } catch (err) {
+        console.error('APK upload error:', err);
+        res.status(500).json({ error: 'Failed to store uploaded APK.' });
+      }
+    }
+  );
+
   // ---- Submissions ----
   app.post('/api/submissions', requireLearner, async (req: AuthedRequest, res) => {
     try {
@@ -583,6 +708,11 @@ async function startServer() {
         res.status(400).json({ error: 'Course ID and completed quiz results are required.' });
         return;
       }
+
+      const readingDurationSeconds =
+        typeof body.readingDurationSeconds === 'number' && Number.isFinite(body.readingDurationSeconds)
+          ? Math.max(0, Math.round(body.readingDurationSeconds))
+          : undefined;
 
       const submission: CourseSubmission = {
         _id: `sub-${crypto.randomUUID().slice(0, 8)}`,
@@ -599,6 +729,7 @@ async function startServer() {
         submittedAt: new Date().toISOString(),
         completedOfflineAt:
           typeof body.completedOfflineAt === 'string' ? body.completedOfflineAt : undefined,
+        readingDurationSeconds,
         questionResults,
         quizResults,
       };
@@ -611,14 +742,83 @@ async function startServer() {
     }
   });
 
+  app.post('/api/courses/:id/track-download', async (req, res) => {
+    try {
+      const courseId = String(req.params.id || '').trim();
+      const course = await db.getCourseById(courseId);
+      if (!course) {
+        res.status(404).json({ error: 'Course not found.' });
+        return;
+      }
+      const token = extractBearer(req);
+      const event: CourseDownloadEvent = {
+        _id: `dl-${crypto.randomUUID().slice(0, 8)}`,
+        courseId,
+        userId: token?.role === 'learner' ? token.sub : undefined,
+        downloadedAt: new Date().toISOString(),
+      };
+      await db.recordDownloadEvent(event);
+      res.status(201).json({ ok: true, event });
+    } catch (err) {
+      console.error('Download tracking error:', err);
+      res.status(500).json({ error: 'Failed to record download event.' });
+    }
+  });
+
   app.get('/api/submissions/mine', requireLearner, async (req: AuthedRequest, res) => {
     const submissions = await db.listSubmissionsByUser(req.learner!._id);
     res.json({ submissions });
   });
 
+  app.get('/api/stats/mine', requireLearner, async (req: AuthedRequest, res) => {
+    try {
+      const learner = req.learner!;
+      const [courses, submissions, certificates, downloads] = await Promise.all([
+        db.listCourses(false),
+        db.listSubmissionsByUser(learner._id),
+        db.listCertificatesByUser(learner._id),
+        db.listDownloadEvents(),
+      ]);
+      const report = buildAdminAnalyticsReport({
+        courses,
+        users: [toPublicUser(learner)],
+        submissions,
+        certificates,
+        downloads: downloads.filter((d) => d.userId === learner._id),
+      });
+      res.json({ stats: report.learners[0] ?? null });
+    } catch (err) {
+      console.error('Learner stats error:', err);
+      res.status(500).json({ error: 'Failed to compute learner statistics.' });
+    }
+  });
+
   app.get('/api/admin/submissions', requireAdmin, async (_req, res) => {
     const submissions = await db.listAllSubmissions();
     res.json({ submissions });
+  });
+
+  app.get('/api/admin/analytics', requireAdmin, async (_req, res) => {
+    try {
+      const [courses, users, submissions, certificates, downloads] = await Promise.all([
+        db.listCourses(true),
+        db.listUsers(),
+        db.listAllSubmissions(),
+        db.listAllCertificates(),
+        db.listDownloadEvents(),
+      ]);
+      const report = buildAdminAnalyticsReport({
+        courses,
+        users: users.map(toPublicUser),
+        submissions,
+        certificates,
+        downloads,
+      });
+      res.json({ report });
+    } catch (err) {
+      console.error('Analytics report error:', err);
+      res.status(500).json({ error: 'Failed to generate analytics report.' });
+    }
   });
 
   app.patch('/api/admin/submissions/:id/review', requireAdmin, async (req, res) => {
@@ -783,18 +983,43 @@ async function startServer() {
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
       }
-      const zipPath = path.join(dataDir, 'certifield-android-app.zip');
+      const zipPath = path.join(dataDir, `certifield-android-app-${process.pid}.zip`);
       execFileSync(
         'python3',
         [
           '-c',
-          'import os, zipfile, sys; src, dst = sys.argv[1], sys.argv[2]; zf = zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED);\nfor r, _, fs in os.walk(src):\n for f in fs:\n  p = os.path.join(r, f)\n  zf.write(p, os.path.relpath(p, os.path.dirname(src)))\nzf.close()',
+          [
+            'import os, zipfile, sys',
+            'src, dst = sys.argv[1], sys.argv[2]',
+            'with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED, allowZip64=False) as zf:',
+            '  for r, dirs, files in os.walk(src):',
+            '    dirs.sort()',
+            '    for f in sorted(files):',
+            '      p = os.path.join(r, f)',
+            '      arc = os.path.relpath(p, os.path.dirname(src)).replace("\\\\", "/")',
+            '      zi = zipfile.ZipInfo(arc, date_time=(2026, 1, 1, 0, 0, 0))',
+            '      zi.compress_type = zipfile.ZIP_DEFLATED',
+            '      zi.external_attr = 0o644 << 16',
+            '      with open(p, "rb") as fh:',
+            '        zf.writestr(zi, fh.read())',
+          ].join('\n'),
           androidDir,
           zipPath,
         ],
         { timeout: 10000 }
       );
-      res.download(zipPath, 'certifield-android-app.zip');
+      const buffer = fs.readFileSync(zipPath);
+      fs.unlinkSync(zipPath);
+      if (buffer.length < 22 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
+        throw new Error('Generated archive failed ZIP signature check.');
+      }
+      res.status(200);
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="certifield-android-app.zip"');
+      res.setHeader('Content-Length', String(buffer.length));
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.end(buffer);
     } catch (err) {
       console.error('Android archive error:', err);
       res.status(500).json({ error: 'Unable to package Android project.' });

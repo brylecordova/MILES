@@ -1,14 +1,15 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Award,
   CheckCircle2,
-  Cloud,
   Download,
+  ExternalLink,
   Film,
   Layers,
   Smartphone,
 } from 'lucide-react';
 import type { Course, SystemBranding } from '../types/training';
+import { downloadUploadedApk } from '../utils/api';
 import {
   getDefaultCertificateDesign,
   resolveCertificateElementText,
@@ -22,13 +23,192 @@ interface LandingPageProps {
   onOpenInstall: () => void;
 }
 
+interface RevealSectionProps {
+  children: React.ReactNode;
+  className?: string;
+  id?: string;
+  delayMs?: number;
+}
+
+const RevealSection: React.FC<RevealSectionProps> = ({
+  children,
+  className = '',
+  id,
+  delayMs = 0,
+}) => {
+  const ref = useRef<HTMLElement | null>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    if (
+      typeof window === 'undefined' ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+      typeof IntersectionObserver === 'undefined'
+    ) {
+      setVisible(true);
+      return;
+    }
+
+    const rect = el.getBoundingClientRect();
+    if (rect.top < window.innerHeight * 0.96) {
+      setVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setVisible(true);
+            observer.disconnect();
+          }
+        });
+      },
+      { threshold: 0.08, rootMargin: '0px 0px -32px 0px' }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <section
+      ref={ref}
+      id={id}
+      style={delayMs > 0 ? { transitionDelay: `${delayMs}ms` } : undefined}
+      className={`reveal-section ${visible ? 'is-visible' : ''} ${className}`}
+    >
+      {children}
+    </section>
+  );
+};
+
 export const LandingPage: React.FC<LandingPageProps> = ({
   branding,
   courses,
   loadingCourses,
   onOpenInstall,
 }) => {
+  const [downloadingApk, setDownloadingApk] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const accent = branding.accentColor || '#1d4ed8';
+
+  const distributionMode = branding.appDistributionMode ?? 'apk_download';
+  const apkUrl = branding.apkUrl?.trim() || '';
+  const playStoreUrl = branding.playStoreUrl?.trim() || '';
+  const isPlayStoreActive = distributionMode === 'play_store';
+  const hasPlayStoreUrl = Boolean(playStoreUrl);
+  const hasDirectApk = Boolean(apkUrl);
+  const isExternalApk = apkUrl.startsWith('http://') || apkUrl.startsWith('https://');
+
+  function handleSmoothAnchor(e: React.MouseEvent<HTMLAnchorElement>, targetId: string) {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    e.preventDefault();
+    const reduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+  }
+
+  async function handleDirectApkDownload() {
+    if (!hasDirectApk) {
+      onOpenInstall();
+      return;
+    }
+    setDownloadingApk(true);
+    setDownloadError(null);
+    try {
+      await downloadUploadedApk(branding.apkFileName || undefined);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Unable to download Android APK.');
+    } finally {
+      setDownloadingApk(false);
+    }
+  }
+
+  function renderDownloadAppAction(
+    variant: 'header' | 'hero' | 'catalog' | 'banner'
+  ): React.ReactNode {
+    const className =
+      variant === 'header'
+        ? 'flex min-h-[40px] items-center gap-2 whitespace-nowrap rounded-xl px-4 text-xs font-semibold text-white transition-opacity hover:opacity-90 sm:text-sm'
+        : variant === 'catalog'
+        ? 'inline-flex min-h-[40px] items-center gap-2 self-start whitespace-nowrap rounded-xl border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-800 hover:bg-slate-100'
+        : 'inline-flex min-h-[48px] items-center gap-2 whitespace-nowrap rounded-xl px-6 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60';
+
+    const style = variant === 'catalog' ? undefined : { backgroundColor: accent };
+    const icon = isPlayStoreActive ? (
+      <ExternalLink className="h-4 w-4" />
+    ) : variant === 'header' ? (
+      <Smartphone className="h-4 w-4" />
+    ) : (
+      <Download className="h-4 w-4" />
+    );
+
+    const label =
+      variant === 'catalog'
+        ? 'Download App to Enroll'
+        : downloadingApk && !isPlayStoreActive
+        ? 'Downloading .apk...'
+        : 'Download App';
+
+    if (isPlayStoreActive) {
+      if (hasPlayStoreUrl) {
+        return (
+          <a
+            href={playStoreUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={style}
+            className={className}
+          >
+            {icon}
+            <span>{label}</span>
+          </a>
+        );
+      }
+      return (
+        <button type="button" onClick={onOpenInstall} style={style} className={className}>
+          {icon}
+          <span>{label}</span>
+        </button>
+      );
+    }
+
+    if (hasDirectApk && isExternalApk) {
+      return (
+        <a
+          href={apkUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          download
+          style={style}
+          className={className}
+        >
+          {icon}
+          <span>{label}</span>
+        </a>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        disabled={downloadingApk}
+        onClick={handleDirectApkDownload}
+        style={style}
+        className={className}
+      >
+        {icon}
+        <span>{label}</span>
+      </button>
+    );
+  }
+
   const featuredCourse = courses[0];
   const sampleDesign =
     featuredCourse?.certificateDesign ??
@@ -52,12 +232,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Strict 3-Zone Top Navigation Bar (No learner workspace tabs, no web sign-in, no admin link) */}
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-6 px-4 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-8 px-4 sm:px-6">
           {/* Zone 1: Dynamic System Icon + Name */}
-          <a href="#top" className="flex shrink-0 items-center gap-2.5 whitespace-nowrap">
+          <a
+            href="#top"
+            onClick={(e) => handleSmoothAnchor(e, 'top')}
+            className="flex shrink-0 items-center gap-2.5 whitespace-nowrap"
+          >
             <img
               src={branding.iconUrl || '/icon.svg'}
               alt={`${branding.systemName} icon`}
+              referrerPolicy="no-referrer"
               className="h-8 w-8 rounded-lg object-contain"
             />
             <span className="font-display text-lg font-extrabold tracking-tight text-slate-900">
@@ -69,50 +254,44 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <nav aria-label="Landing navigation" className="hidden items-center gap-7 md:flex">
             <a
               href="#capabilities"
-              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+              onClick={(e) => handleSmoothAnchor(e, 'capabilities')}
+              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:underline hover:underline-offset-4"
             >
               Capabilities
             </a>
             <a
               href="#courses"
-              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+              onClick={(e) => handleSmoothAnchor(e, 'courses')}
+              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:underline hover:underline-offset-4"
             >
               Course Catalog
             </a>
             <a
               href="#certificates"
-              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+              onClick={(e) => handleSmoothAnchor(e, 'certificates')}
+              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:underline hover:underline-offset-4"
             >
               Certificates
             </a>
             <a
               href="#get-app"
-              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+              onClick={(e) => handleSmoothAnchor(e, 'get-app')}
+              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:underline hover:underline-offset-4"
             >
               Android App
             </a>
           </nav>
 
           {/* Zone 3: Single Primary CTA */}
-          <div className="shrink-0">
-            <button
-              type="button"
-              onClick={onOpenInstall}
-              style={{ backgroundColor: accent }}
-              className="flex min-h-[40px] items-center gap-2 whitespace-nowrap rounded-xl px-4 text-xs font-semibold text-white transition-opacity hover:opacity-90 sm:text-sm"
-            >
-              <Smartphone className="h-4 w-4" />
-              <span>Get Android App</span>
-            </button>
-          </div>
+          <div className="shrink-0">{renderDownloadAppAction('header')}</div>
         </div>
       </header>
 
       <main id="top">
-        {/* Hero Section */}
+        {/* Hero Section (Immediately visible on initial paint) */}
         <section className="mx-auto max-w-7xl px-4 pt-12 pb-16 sm:px-6 lg:pt-16 lg:pb-24">
-          <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
-            <div className="max-w-xl">
+          <div className="grid items-stretch gap-10 lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="flex max-w-xl flex-col justify-center">
               <p
                 className="text-xs font-bold tracking-wider uppercase"
                 style={{ color: accent }}
@@ -129,29 +308,34 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </p>
 
               <div className="mt-7 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={onOpenInstall}
-                  style={{ backgroundColor: accent }}
-                  className="flex min-h-[48px] items-center gap-2 rounded-xl px-6 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                >
-                  <Download className="h-4 w-4" />
-                  <span>Get the Android App</span>
-                </button>
+                {renderDownloadAppAction('hero')}
                 <a
                   href="#courses"
-                  className="flex min-h-[48px] items-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100"
+                  onClick={(e) => handleSmoothAnchor(e, 'courses')}
+                  className="flex min-h-[48px] items-center whitespace-nowrap rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100"
                 >
                   Preview Available Courses
                 </a>
               </div>
+
+              {downloadError && (
+                <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs text-red-700">
+                  {downloadError}
+                </p>
+              )}
 
               <div className="mt-7 flex flex-wrap items-center gap-x-2.5 gap-y-2 text-xs font-medium text-slate-500">
                 <span>Offline MP4 video playback</span>
                 <span aria-hidden="true">·</span>
                 <span>Account sign-in inside Android app</span>
                 <span aria-hidden="true">·</span>
-                <span>Cloud APK build ready</span>
+                <span>
+                  {isPlayStoreActive
+                    ? 'Available via Google Play'
+                    : hasDirectApk
+                    ? `Direct .apk v${branding.apkVersion || '1.0.0'}`
+                    : 'Android APK distribution'}
+                </span>
               </div>
             </div>
 
@@ -159,14 +343,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <img
                 src="/src/assets/images/hero_mobile_certification_1795696801213.jpg"
                 alt={`${branding.systemName} mobile certification in action`}
-                className="aspect-video w-full object-cover"
+                referrerPolicy="no-referrer"
+                className="aspect-video h-full w-full object-cover"
               />
             </div>
           </div>
         </section>
 
         {/* Capabilities Bento */}
-        <section id="capabilities" className="border-y border-slate-200 bg-white py-16 lg:py-20">
+        <RevealSection id="capabilities" className="border-y border-slate-200 bg-white py-16 lg:py-20">
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <div className="max-w-2xl">
               <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
@@ -207,7 +392,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               ].map((item) => (
                 <article
                   key={item.num}
-                  className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50/70 p-6"
+                  className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50/70 p-6 transition-transform duration-200 hover:-translate-y-0.5"
                 >
                   <div>
                     <div className="flex items-center justify-between">
@@ -223,27 +408,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               ))}
             </div>
           </div>
-        </section>
+        </RevealSection>
 
         {/* Read-Only Course Catalog Teaser */}
-        <section id="courses" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-20">
+        <RevealSection id="courses" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-20">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
               <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
                 Published Training Catalog
               </h2>
               <p className="mt-1.5 text-sm text-slate-600">
-                Preview available certification programs below. Sign in inside the {branding.systemName}{' '}
-                Android app to download courses and earn credentials.
+                Preview available certification programs below. Sign in inside the{' '}
+                {branding.systemName} Android app to download courses and earn credentials.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onOpenInstall}
-              className="min-h-[40px] self-start rounded-xl border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-800 hover:bg-slate-100"
-            >
-              Install Android App to Enroll
-            </button>
+            {renderDownloadAppAction('catalog')}
           </div>
 
           {loadingCourses ? (
@@ -267,7 +446,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 return (
                   <article
                     key={course._id}
-                    className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white"
+                    className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition-transform duration-200 hover:-translate-y-0.5"
                   >
                     <CourseBannerImage
                       url={course.bannerUrl}
@@ -293,9 +472,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                         <span className="min-w-0 truncate font-medium text-slate-700">
                           Credential: {course.certificateTitle}
                         </span>
-                        <span className="shrink-0 font-semibold text-slate-900">
-                          Android App
-                        </span>
+                        <span className="shrink-0 font-semibold text-slate-900">Android App</span>
                       </div>
                     </div>
                   </article>
@@ -303,10 +480,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               })}
             </div>
           )}
-        </section>
+        </RevealSection>
 
         {/* Certificate Showcase */}
-        <section id="certificates" className="border-y border-slate-200 bg-white py-16 lg:py-20">
+        <RevealSection id="certificates" className="border-y border-slate-200 bg-white py-16 lg:py-20">
           <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr]">
             <div>
               <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
@@ -341,6 +518,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <img
                   src={sampleDesign.backgroundImageUrl}
                   alt="Sample certificate backdrop"
+                  referrerPolicy="no-referrer"
                   className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-35"
                 />
               )}
@@ -389,6 +567,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                           <img
                             src={branding.iconUrl || '/icon.svg'}
                             alt={branding.systemName}
+                            referrerPolicy="no-referrer"
                             className="h-5 w-5 rounded object-contain"
                           />
                         </div>
@@ -400,67 +579,59 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 })}
             </div>
           </div>
-        </section>
+        </RevealSection>
 
-        {/* Get the Android App (Low-Spec PC Friendly Cloud APK + Direct Install) */}
-        <section id="get-app" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-20">
+        {/* Download the Android App Banner */}
+        <RevealSection id="get-app" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-20">
           <div className="rounded-3xl border border-slate-200 bg-slate-900 p-8 text-white sm:p-12">
             <div className="grid items-center gap-8 lg:grid-cols-[1.2fr_0.8fr]">
               <div>
                 <p className="text-xs font-bold tracking-wider text-blue-300 uppercase">
-                  Android Application
+                  {isPlayStoreActive ? 'Google Play Distribution' : 'Android Mobile Application'}
                 </p>
                 <h2 className="font-display mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
-                  Install {branding.systemName} on Android — no heavy PC required.
+                  Start learning with {branding.systemName} on Android.
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-slate-300 sm:text-base">
-                  Learners register and sign in strictly inside the Android mobile app. Download the
-                  Android project with the included GitHub Actions cloud build workflow to compile an
-                  installable <code className="font-mono-tabular text-white">.apk</code> in the cloud
-                  with zero Android Studio setup—complete with native offline MP4 video playback.
+                  {isPlayStoreActive
+                    ? 'Install the Android application from Google Play to create your learner account, download full training modules with offline MP4 videos, and receive verified PDF certificates.'
+                    : 'Download the Android application directly to your phone to register your learner account, save video courses for offline playback inside the app, and earn verified PDF certificates.'}
                 </p>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <a
-                    href="/api/android-project.zip"
-                    download="certifield-android-app.zip"
-                    style={{ backgroundColor: accent }}
-                    className="flex min-h-[48px] items-center gap-2 rounded-xl px-5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                  >
-                    <Download className="h-4 w-4" />
-                    <span>Download Android App Project (.zip)</span>
-                  </a>
-                  <button
-                    type="button"
-                    onClick={onOpenInstall}
-                    className="flex min-h-[48px] items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-5 text-sm font-semibold text-white hover:bg-slate-700"
-                  >
-                    <Cloud className="h-4 w-4" />
-                    <span>View Cloud APK Build Guide</span>
-                  </button>
+                <div className="mt-6 flex flex-wrap items-center gap-3">
+                  {renderDownloadAppAction('banner')}
+                  {!isPlayStoreActive && hasDirectApk && (
+                    <span className="font-mono-tabular text-xs text-slate-300">
+                      {branding.apkFileName || 'app-debug.apk'} · v{branding.apkVersion || '1.0.0'}
+                    </span>
+                  )}
                 </div>
+                {downloadError && (
+                  <p className="mt-3 rounded-xl border border-red-400/40 bg-red-950/60 px-3.5 py-2 text-xs text-red-200">
+                    {downloadError}
+                  </p>
+                )}
               </div>
 
               <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 space-y-3 text-xs text-slate-300">
-                <p className="font-semibold text-white">3-Step Cloud APK Build (No Android Studio)</p>
-                <ol className="list-decimal space-y-2 pl-4">
-                  <li>Download and extract the Android project archive above.</li>
-                  <li>
-                    Upload the folder to GitHub (includes{' '}
-                    <code className="font-mono-tabular text-blue-300">
-                      .github/workflows/build-android-apk.yml
-                    </code>
-                    ).
+                <p className="font-semibold text-white">Inside the Android App</p>
+                <ul className="space-y-2.5">
+                  <li className="flex items-start gap-2.5">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-blue-300" />
+                    <span>Dedicated learner registration, sign-in, and personal stats dashboard</span>
                   </li>
-                  <li>
-                    Run the <strong>Build Android APK</strong> workflow in GitHub Actions and install{' '}
-                    <code className="font-mono-tabular text-blue-300">app-debug.apk</code> on your
-                    Android phone. Downloaded videos play locally via Media3 ExoPlayer.
+                  <li className="flex items-start gap-2.5">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-blue-300" />
+                    <span>Offline MP4 video playback inside the app via Media3 ExoPlayer</span>
                   </li>
-                </ol>
+                  <li className="flex items-start gap-2.5">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-blue-300" />
+                    <span>Queued quiz sync, achievement medals, and native PDF certificate export</span>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
-        </section>
+        </RevealSection>
       </main>
 
       {/* Quiet Footer (Strictly zero admin links) */}
@@ -470,6 +641,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <img
               src={branding.iconUrl || '/icon.svg'}
               alt={branding.systemName}
+              referrerPolicy="no-referrer"
               className="h-6 w-6 rounded object-contain"
             />
             <div>
@@ -479,16 +651,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           <div className="flex flex-wrap gap-6 text-xs font-medium text-slate-500">
-            <a href="#capabilities" className="hover:text-slate-900">
+            <a
+              href="#capabilities"
+              onClick={(e) => handleSmoothAnchor(e, 'capabilities')}
+              className="hover:text-slate-900"
+            >
               Capabilities
             </a>
-            <a href="#courses" className="hover:text-slate-900">
+            <a
+              href="#courses"
+              onClick={(e) => handleSmoothAnchor(e, 'courses')}
+              className="hover:text-slate-900"
+            >
               Courses
             </a>
-            <a href="#certificates" className="hover:text-slate-900">
+            <a
+              href="#certificates"
+              onClick={(e) => handleSmoothAnchor(e, 'certificates')}
+              className="hover:text-slate-900"
+            >
               Certificates
             </a>
-            <a href="#get-app" className="hover:text-slate-900">
+            <a
+              href="#get-app"
+              onClick={(e) => handleSmoothAnchor(e, 'get-app')}
+              className="hover:text-slate-900"
+            >
               Android App
             </a>
           </div>

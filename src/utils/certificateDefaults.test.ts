@@ -11,6 +11,7 @@ test('getDefaultSystemBranding provides valid defaults', () => {
   assert.equal(branding.systemName, 'CertiField');
   assert.ok(branding.iconUrl.startsWith('/'));
   assert.match(branding.accentColor, /^#[0-9a-fA-F]{6}$/);
+  assert.equal(branding.appDistributionMode, 'apk_download');
 });
 
 test('getDefaultCertificateDesign places learner_name and all required elements', () => {

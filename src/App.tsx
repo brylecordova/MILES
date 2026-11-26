@@ -116,7 +116,7 @@ export default function App() {
       />
       <AndroidInstallModal
         open={installModalOpen}
-        systemName={branding.systemName}
+        branding={branding}
         onClose={() => setInstallModalOpen(false)}
       />
     </>

@@ -111,11 +111,18 @@ export interface CertificateDesign {
   elements: CertificateElement[];
 }
 
+export type AppDistributionMode = 'apk_download' | 'play_store';
+
 export interface SystemBranding {
   systemName: string;
   tagline: string;
   iconUrl: string;
   accentColor: string;
+  appDistributionMode?: AppDistributionMode;
+  apkUrl?: string;
+  apkFileName?: string;
+  apkVersion?: string;
+  playStoreUrl?: string;
   updatedAt: string;
 }
 
@@ -179,6 +186,7 @@ export interface CourseSubmission {
   reviewedAt?: string;
   submittedAt: string;
   completedOfflineAt?: string;
+  readingDurationSeconds?: number;
   questionResults: QuestionAttemptRecord[];
   quizResults: QuizAttemptSummary[];
   certificateId?: string;
@@ -220,6 +228,7 @@ export interface CourseProgressState {
   latestAnswers: Record<string, QuizAnswerValue>;
   latestQuestionResults: Record<string, QuestionAttemptRecord>;
   quizResults: Record<string, QuizAttemptSummary>;
+  readingDurationSeconds?: number;
   status: 'not_started' | 'in_progress' | 'completed';
   startedAt?: string;
   updatedAt: string;
@@ -237,6 +246,108 @@ export interface PendingOfflineSubmission {
   overallScore: number;
   passed: boolean;
   completedOfflineAt: string;
+  readingDurationSeconds?: number;
   questionResults: QuestionAttemptRecord[];
   quizResults: QuizAttemptSummary[];
+}
+
+export interface CourseDownloadEvent {
+  _id: string;
+  courseId: string;
+  userId?: string;
+  downloadedAt: string;
+}
+
+export interface MedalBadge {
+  id: string;
+  title: string;
+  description: string;
+  tier: 'gold' | 'silver' | 'bronze';
+  earned: boolean;
+}
+
+export interface CourseAnalyticsSummary {
+  courseId: string;
+  title: string;
+  category: string;
+  published: boolean;
+  downloadCount: number;
+  submissionCount: number;
+  approvedCount: number;
+  pendingCount: number;
+  completionRatePct: number;
+  passRatePct: number;
+  averageScore: number;
+  averageReadingSeconds: number;
+  averageQuizRetries: number;
+  suggestion: string;
+}
+
+export interface LearnerAnalyticsSummary {
+  userId: string;
+  name: string;
+  email: string;
+  createdAt: string;
+  downloadsCount: number;
+  coursesCompleted: number;
+  certificatesEarned: number;
+  averageScore: number;
+  averageReadingSeconds: number;
+  totalReadingSeconds: number;
+  averageQuizRetries: number;
+  firstAttemptAccuracyPct: number;
+  learningCapacityScore: number;
+  learningCapacityTier: 'Accelerated' | 'Steady' | 'Needs Guidance';
+  weakestTopic: string;
+  medals: MedalBadge[];
+  lastActiveAt: string;
+  suggestion: string;
+  courseBreakdown: Array<{
+    courseId: string;
+    courseTitle: string;
+    score: number;
+    readingDurationSeconds: number;
+    avgQuizRetries: number;
+    status: SubmissionStatus;
+    submittedAt: string;
+  }>;
+}
+
+export interface AnalyticsSuggestion {
+  id: string;
+  metric: string;
+  severity: 'attention' | 'opportunity' | 'positive';
+  title: string;
+  recommendation: string;
+}
+
+export interface AdminAnalyticsReport {
+  overview: {
+    totalLearners: number;
+    activeLearners: number;
+    totalDownloads: number;
+    totalSubmissions: number;
+    approvedSubmissions: number;
+    pendingReviews: number;
+    totalCertificates: number;
+    passRatePct: number;
+    averageScore: number;
+    averageReadingSeconds: number;
+    averageQuizRetries: number;
+    averageLearningCapacity: number;
+  };
+  highlights: {
+    mostDownloadedCourse: CourseAnalyticsSummary | null;
+    mostCompletedCourse: CourseAnalyticsSummary | null;
+    highestScoreCourse: CourseAnalyticsSummary | null;
+    highestRetryCourse: CourseAnalyticsSummary | null;
+  };
+  courses: CourseAnalyticsSummary[];
+  learners: LearnerAnalyticsSummary[];
+  weeklyTrend: Array<{
+    label: string;
+    downloads: number;
+    completions: number;
+  }>;
+  suggestions: AnalyticsSuggestion[];
 }

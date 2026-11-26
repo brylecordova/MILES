@@ -2,20 +2,25 @@ import React, { useEffect, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
+  BarChart3,
   BookOpen,
   CheckCircle2,
   ClipboardList,
+  ExternalLink,
   Film,
   ImageIcon,
   Lock,
   Palette,
   Plus,
   Save,
+  Smartphone,
   Trash2,
   Upload,
   XCircle,
 } from 'lucide-react';
 import type {
+  AdminAnalyticsReport,
+  AppDistributionMode,
   Course,
   CourseModule,
   CourseSubmission,
@@ -28,8 +33,9 @@ import type {
   QuizQuestion,
   SystemBranding,
 } from '../types/training';
-import { api, getAdminToken, setAdminToken } from '../utils/api';
+import { api, getAdminToken, setAdminToken, uploadAdminApk } from '../utils/api';
 import { getDefaultCertificateDesign } from '../utils/certificateDefaults';
+import { AdminAnalyticsDashboard } from './AdminAnalyticsDashboard';
 import { CertificateDesigner } from './CertificateDesigner';
 import { CourseBannerImage } from './MediaRenderer';
 
@@ -112,22 +118,31 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
-  const [adminTab, setAdminTab] = useState<'courses' | 'submissions' | 'branding'>('courses');
+  const [adminTab, setAdminTab] = useState<'analytics' | 'courses' | 'submissions' | 'branding'>('analytics');
   const [courses, setCourses] = useState<Course[]>([]);
   const [submissions, setSubmissions] = useState<CourseSubmission[]>([]);
+  const [analyticsReport, setAnalyticsReport] = useState<AdminAnalyticsReport | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [subFilter, setSubFilter] = useState<'all' | 'pending_review' | 'approved' | 'rejected'>('all');
   const [selectedSub, setSelectedSub] = useState<CourseSubmission | null>(null);
   const [reviewFeedback, setReviewFeedback] = useState('');
   const [reviewLoading, setReviewLoading] = useState(false);
 
-  // System Branding State
+  // System Branding & App Distribution State
   const [brandingDraft, setBrandingDraft] = useState<Omit<SystemBranding, 'updatedAt'>>({
     systemName: systemBranding.systemName,
     tagline: systemBranding.tagline,
     iconUrl: systemBranding.iconUrl,
     accentColor: systemBranding.accentColor,
+    appDistributionMode: systemBranding.appDistributionMode ?? 'apk_download',
+    apkUrl: systemBranding.apkUrl ?? '',
+    apkFileName: systemBranding.apkFileName ?? '',
+    apkVersion: systemBranding.apkVersion ?? '1.0.0',
+    playStoreUrl: systemBranding.playStoreUrl ?? '',
   });
   const [savingBranding, setSavingBranding] = useState(false);
+  const [uploadingApk, setUploadingApk] = useState(false);
+  const [apkSizeBytes, setApkSizeBytes] = useState<number | null>(null);
   const [brandingError, setBrandingError] = useState<string | null>(null);
   const [brandingSuccess, setBrandingSuccess] = useState<string | null>(null);
 
@@ -145,6 +160,11 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
       tagline: systemBranding.tagline,
       iconUrl: systemBranding.iconUrl,
       accentColor: systemBranding.accentColor,
+      appDistributionMode: systemBranding.appDistributionMode ?? 'apk_download',
+      apkUrl: systemBranding.apkUrl ?? '',
+      apkFileName: systemBranding.apkFileName ?? '',
+      apkVersion: systemBranding.apkVersion ?? '1.0.0',
+      playStoreUrl: systemBranding.playStoreUrl ?? '',
     });
   }, [systemBranding]);
 
@@ -162,15 +182,20 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   }, [authed]);
 
   async function refreshAdminData() {
+    setAnalyticsLoading(true);
     try {
-      const [cRes, sRes] = await Promise.all([
+      const [cRes, sRes, aRes] = await Promise.all([
         api.listCourses(true),
         api.listAllSubmissions(),
+        api.getAdminAnalytics(),
       ]);
       setCourses(cRes.courses);
       setSubmissions(sRes.submissions);
+      setAnalyticsReport(aRes.report);
     } catch {
       // Token may have expired
+    } finally {
+      setAnalyticsLoading(false);
     }
   }
 
@@ -249,6 +274,29 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     await onCoursesMutated();
   }
 
+  async function handleApkFileSelected(file: File) {
+    setUploadingApk(true);
+    setBrandingError(null);
+    setBrandingSuccess(null);
+    try {
+      const res = await uploadAdminApk(file);
+      setApkSizeBytes(res.sizeBytes);
+      setBrandingDraft((prev) => ({
+        ...prev,
+        appDistributionMode: 'apk_download',
+        apkUrl: res.url,
+        apkFileName: res.fileName,
+      }));
+      setBrandingSuccess(
+        `Uploaded ${res.fileName} (${Math.max(1, Math.round(res.sizeBytes / 1024))} KB). Click Save Settings to publish it on the Download App button.`
+      );
+    } catch (err) {
+      setBrandingError(err instanceof Error ? err.message : 'APK upload failed.');
+    } finally {
+      setUploadingApk(false);
+    }
+  }
+
   async function handleSaveBranding(e: React.FormEvent) {
     e.preventDefault();
     setSavingBranding(true);
@@ -257,7 +305,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     try {
       const res = await api.updateSystemBranding(brandingDraft);
       onBrandingUpdated(res.branding);
-      setBrandingSuccess('System name, icon, and branding saved.');
+      setBrandingSuccess('System branding and Android Download App settings saved.');
     } catch (err) {
       setBrandingError(err instanceof Error ? err.message : 'Failed to save system branding.');
     } finally {
@@ -534,6 +582,22 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           <button
             type="button"
             onClick={() => {
+              setAdminTab('analytics');
+              setDraft(null);
+              setSelectedSub(null);
+            }}
+            className={`flex min-h-[44px] flex-1 items-center gap-2.5 rounded-xl px-3 text-sm font-semibold transition-colors ${
+              adminTab === 'analytics'
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            <BarChart3 className="h-4 w-4" />
+            <span>Analytics</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               setAdminTab('courses');
               setSelectedSub(null);
             }}
@@ -580,7 +644,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             }`}
           >
             <Palette className="h-4 w-4" />
-            <span>System Branding</span>
+            <span>Branding &amp; App</span>
           </button>
         </nav>
 
@@ -600,6 +664,15 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
 
       {/* Main Content Area */}
       <div className="min-w-0">
+        {adminTab === 'analytics' && (
+          <AdminAnalyticsDashboard
+            report={analyticsReport}
+            loading={analyticsLoading}
+            onRefresh={refreshAdminData}
+            onOpenSubmissions={() => setAdminTab('submissions')}
+          />
+        )}
+
         {adminTab === 'courses' && !draft && (
           <div className="space-y-5">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
@@ -1729,23 +1802,25 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           </div>
         )}
 
-        {/* SYSTEM BRANDING CONFIGURATION */}
+        {/* SYSTEM BRANDING & ANDROID APP DISTRIBUTION */}
         {adminTab === 'branding' && (
           <form onSubmit={handleSaveBranding} className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">System Name, Icon &amp; Branding</h1>
+                <h1 className="text-2xl font-bold text-slate-900">
+                  Branding &amp; Android App Distribution
+                </h1>
                 <p className="mt-1 text-sm text-slate-600">
-                  Configure the platform title, tagline, and icon displayed on the public landing page and certificate seals.
+                  Configure the platform title, icon, and whether the public Download App buttons serve a direct .apk download or a Google Play Store link.
                 </p>
               </div>
               <button
                 type="submit"
-                disabled={savingBranding}
+                disabled={savingBranding || uploadingApk}
                 className="flex min-h-[44px] items-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
               >
                 <Save className="h-4 w-4" />
-                <span>{savingBranding ? 'Saving...' : 'Save Branding'}</span>
+                <span>{savingBranding ? 'Saving...' : 'Save Settings'}</span>
               </button>
             </div>
 
@@ -1761,6 +1836,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             )}
 
             <section className="rounded-2xl border border-slate-200 bg-white p-6 space-y-5">
+              <h2 className="text-base font-bold text-slate-900">System Identity</h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label
@@ -1887,6 +1963,199 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   </div>
                 </div>
               </div>
+            </section>
+
+            {/* Android App Distribution Mode & APK Upload */}
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 space-y-5">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">
+                  Android &ldquo;Download App&rdquo; Button Behavior
+                </h2>
+                <p className="mt-1 text-xs text-slate-600">
+                  Choose whether the public landing page Download App button downloads the uploaded .apk file directly or opens your Google Play Store listing.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Android app distribution mode">
+                {(
+                  [
+                    {
+                      value: 'apk_download' as AppDistributionMode,
+                      title: 'Direct .apk Download',
+                      desc: 'Downloads the .apk built from GitHub Actions directly onto Android devices.',
+                      icon: <Upload className="h-4 w-4" />,
+                    },
+                    {
+                      value: 'play_store' as AppDistributionMode,
+                      title: 'Google Play Store Link',
+                      desc: 'Redirects learners straight to your Google Play Store listing.',
+                      icon: <ExternalLink className="h-4 w-4" />,
+                    },
+                  ] as const
+                ).map((modeOption) => {
+                  const selected =
+                    (brandingDraft.appDistributionMode ?? 'apk_download') === modeOption.value;
+                  return (
+                    <button
+                      key={modeOption.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() =>
+                        setBrandingDraft((prev) => ({
+                          ...prev,
+                          appDistributionMode: modeOption.value,
+                        }))
+                      }
+                      className={`flex flex-col items-start gap-1.5 rounded-2xl border p-4 text-left transition-colors ${
+                        selected
+                          ? 'border-blue-700 bg-blue-50/70 ring-1 ring-blue-700'
+                          : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100/70'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                        <span className={selected ? 'text-blue-700' : 'text-slate-500'}>
+                          {modeOption.icon}
+                        </span>
+                        <span>{modeOption.title}</span>
+                      </div>
+                      <p className="text-xs leading-relaxed text-slate-600">{modeOption.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {(brandingDraft.appDistributionMode ?? 'apk_download') === 'apk_download' ? (
+                <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <Smartphone className="h-4 w-4 text-blue-700" />
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">
+                          Upload Android Release (.apk)
+                        </p>
+                        <p className="text-xs text-slate-600">
+                          Build <code className="font-mono-tabular">app-debug.apk</code> via the included{' '}
+                          <code className="font-mono-tabular">.github/workflows/android-build.yml</code>{' '}
+                          workflow on GitHub Actions, then upload it here.
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800">
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>{uploadingApk ? 'Uploading APK...' : 'Upload .apk File'}</span>
+                      <input
+                        id="admin-apk-upload-input"
+                        type="file"
+                        accept=".apk,application/vnd.android.package-archive"
+                        className="hidden"
+                        disabled={uploadingApk}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handleApkFileSelected(file);
+                          }
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {brandingDraft.apkUrl ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-white px-4 py-3 text-xs">
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-900">
+                          Active APK: {brandingDraft.apkFileName || 'app-debug.apk'}
+                          {apkSizeBytes ? ` · ${Math.max(1, Math.round(apkSizeBytes / 1024))} KB` : ''}
+                        </p>
+                        <p className="font-mono-tabular mt-0.5 truncate text-slate-500">
+                          {brandingDraft.apkUrl}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setApkSizeBytes(null);
+                          setBrandingDraft((prev) => ({
+                            ...prev,
+                            apkUrl: '',
+                            apkFileName: '',
+                          }));
+                        }}
+                        className="min-h-[34px] rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 hover:bg-red-100"
+                      >
+                        Remove APK
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                      No .apk uploaded yet. Upload your .apk file above or paste an external HTTPS download link below.
+                    </div>
+                  )}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label
+                        htmlFor="apk-version-input"
+                        className="mb-1 block text-xs font-semibold text-slate-700"
+                      >
+                        App Version Label
+                      </label>
+                      <input
+                        id="apk-version-input"
+                        type="text"
+                        value={brandingDraft.apkVersion || ''}
+                        onChange={(e) =>
+                          setBrandingDraft({ ...brandingDraft, apkVersion: e.target.value })
+                        }
+                        placeholder="1.0.0"
+                        className="font-mono-tabular min-h-[40px] w-full rounded-xl border border-slate-300 bg-white px-3 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="apk-url-input"
+                        className="mb-1 block text-xs font-semibold text-slate-700"
+                      >
+                        Direct APK URL (auto-filled on upload or GitHub Release URL)
+                      </label>
+                      <input
+                        id="apk-url-input"
+                        type="text"
+                        value={brandingDraft.apkUrl || ''}
+                        onChange={(e) =>
+                          setBrandingDraft({ ...brandingDraft, apkUrl: e.target.value })
+                        }
+                        placeholder="/uploads/... or https://github.com/.../app-debug.apk"
+                        className="font-mono-tabular min-h-[40px] w-full rounded-xl border border-slate-300 bg-white px-3 text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                  <label
+                    htmlFor="play-store-url-input"
+                    className="block text-xs font-semibold text-slate-700"
+                  >
+                    Google Play Store App URL
+                  </label>
+                  <input
+                    id="play-store-url-input"
+                    type="url"
+                    value={brandingDraft.playStoreUrl || ''}
+                    onChange={(e) =>
+                      setBrandingDraft({ ...brandingDraft, playStoreUrl: e.target.value })
+                    }
+                    placeholder="https://play.google.com/store/apps/details?id=com.certifield.app"
+                    className="min-h-[42px] w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
+                  />
+                  <p className="text-xs text-slate-500">
+                    When saved, all Download App buttons on the public landing page will link directly to this Google Play Store URL.
+                  </p>
+                </div>
+              )}
             </section>
           </form>
         )}

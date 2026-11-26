@@ -11,6 +11,11 @@ export function getDefaultSystemBranding(): SystemBranding {
     tagline: 'Offline-ready Android field training and verifiable PDF certification.',
     iconUrl: '/icon.svg',
     accentColor: '#1d4ed8',
+    appDistributionMode: 'apk_download',
+    apkUrl: '',
+    apkFileName: '',
+    apkVersion: '1.0.0',
+    playStoreUrl: '',
     updatedAt: new Date().toISOString(),
   };
 }

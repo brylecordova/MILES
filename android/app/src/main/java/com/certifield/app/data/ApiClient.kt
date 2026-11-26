@@ -40,6 +40,7 @@ private data class SubmitPayload(
     val overallScore: Int,
     val passed: Boolean,
     val completedOfflineAt: String? = null,
+    val readingDurationSeconds: Int = 0,
     val questionResults: List<QuestionAttemptRecord>,
     val quizResults: List<QuizAttemptSummary>,
 )
@@ -65,6 +66,18 @@ class ApiClient(private val baseUrlProvider: () -> String) {
         execute<CoursesResponse>(req).courses
     }
 
+    suspend fun trackCourseDownload(courseId: String) = withContext(Dispatchers.IO) {
+        runCatching {
+            val emptyBody = "{}".toRequestBody(jsonMedia)
+            val req = Request.Builder()
+                .url(url("/api/courses/$courseId/track-download"))
+                .apply { token?.let { header("Authorization", "Bearer $it") } }
+                .post(emptyBody)
+                .build()
+            http.newCall(req).execute().close()
+        }
+    }
+
     suspend fun submitCourse(
         courseId: String,
         courseTitle: String,
@@ -73,6 +86,7 @@ class ApiClient(private val baseUrlProvider: () -> String) {
         overallScore: Int,
         passed: Boolean,
         completedOfflineAt: String?,
+        readingDurationSeconds: Int = 0,
         questionResults: List<QuestionAttemptRecord>,
         quizResults: List<QuizAttemptSummary>,
     ) = withContext(Dispatchers.IO) {
@@ -85,6 +99,7 @@ class ApiClient(private val baseUrlProvider: () -> String) {
                 overallScore = overallScore,
                 passed = passed,
                 completedOfflineAt = completedOfflineAt,
+                readingDurationSeconds = readingDurationSeconds,
                 questionResults = questionResults,
                 quizResults = quizResults,
             )

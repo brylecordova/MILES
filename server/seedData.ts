@@ -410,3 +410,322 @@ export function getSeedCourses(): Course[] {
     },
   ];
 }
+
+export function getSeedAnalyticsData(now = new Date()): {
+  users: Array<{
+    _id: string;
+    name: string;
+    email: string;
+    role: 'learner';
+    createdAt: string;
+    passwordHash: string;
+  }>;
+  downloads: Array<{
+    _id: string;
+    courseId: string;
+    userId?: string;
+    downloadedAt: string;
+  }>;
+  submissions: import('../src/types/training.ts').CourseSubmission[];
+  certificates: import('../src/types/training.ts').CertificateRecord[];
+} {
+  const daysAgo = (d: number, hour = 14) => {
+    const dt = new Date(now);
+    dt.setUTCDate(dt.getUTCDate() - d);
+    dt.setUTCHours(hour, 15, 0, 0);
+    return dt.toISOString();
+  };
+
+  const users = [
+    {
+      _id: 'user-seed-elena',
+      name: 'Elena Rostova',
+      email: 'elena.rostova@fieldops.org',
+      role: 'learner' as const,
+      createdAt: daysAgo(12),
+      passwordHash: 'seed-locked',
+    },
+    {
+      _id: 'user-seed-marcus',
+      name: 'Marcus Vance',
+      email: 'marcus.vance@fieldops.org',
+      role: 'learner' as const,
+      createdAt: daysAgo(10),
+      passwordHash: 'seed-locked',
+    },
+    {
+      _id: 'user-seed-priya',
+      name: 'Priya Nair',
+      email: 'priya.nair@fieldops.org',
+      role: 'learner' as const,
+      createdAt: daysAgo(8),
+      passwordHash: 'seed-locked',
+    },
+    {
+      _id: 'user-seed-david',
+      name: 'David Chen',
+      email: 'david.chen@fieldops.org',
+      role: 'learner' as const,
+      createdAt: daysAgo(6),
+      passwordHash: 'seed-locked',
+    },
+  ];
+
+  const downloads = [
+    { _id: 'dl-seed-1', courseId: 'course-workplace-safety', userId: 'user-seed-elena', downloadedAt: daysAgo(6) },
+    { _id: 'dl-seed-2', courseId: 'course-clinical-hygiene', userId: 'user-seed-elena', downloadedAt: daysAgo(4) },
+    { _id: 'dl-seed-3', courseId: 'course-data-privacy', userId: 'user-seed-elena', downloadedAt: daysAgo(2) },
+    { _id: 'dl-seed-4', courseId: 'course-workplace-safety', userId: 'user-seed-marcus', downloadedAt: daysAgo(5) },
+    { _id: 'dl-seed-5', courseId: 'course-data-privacy', userId: 'user-seed-marcus', downloadedAt: daysAgo(1) },
+    { _id: 'dl-seed-6', courseId: 'course-workplace-safety', userId: 'user-seed-priya', downloadedAt: daysAgo(3) },
+    { _id: 'dl-seed-7', courseId: 'course-clinical-hygiene', userId: 'user-seed-priya', downloadedAt: daysAgo(1) },
+    { _id: 'dl-seed-8', courseId: 'course-workplace-safety', userId: 'user-seed-david', downloadedAt: daysAgo(2) },
+    { _id: 'dl-seed-9', courseId: 'course-clinical-hygiene', userId: 'user-seed-david', downloadedAt: daysAgo(0, 9) },
+  ];
+
+  const submissions: import('../src/types/training.ts').CourseSubmission[] = [
+    {
+      _id: 'sub-seed-1',
+      courseId: 'course-workplace-safety',
+      courseTitle: 'Workplace Safety & Emergency Response',
+      certificateTitle: 'Certified Workplace Safety Specialist',
+      issuerName: 'CertiField Safety Institute',
+      userId: 'user-seed-elena',
+      userName: 'Elena Rostova',
+      userEmail: 'elena.rostova@fieldops.org',
+      overallScore: 96,
+      passed: true,
+      status: 'approved',
+      reviewedAt: daysAgo(5),
+      submittedAt: daysAgo(5, 11),
+      readingDurationSeconds: 840,
+      certificateId: 'cert-seed-1',
+      questionResults: [
+        {
+          questionId: 'q-ws-1',
+          quizId: 'mod-ws-q1',
+          quizTitle: 'Checkpoint 1: PPE & Energy Isolation',
+          questionPrompt: 'After applying your personal padlock and tag to an isolation valve, what must you do before starting repairs?',
+          questionType: 'multiple_choice',
+          topicTag: 'Lockout-Tagout',
+          tries: 1,
+          userAnswer: 1,
+          userAnswerLabel: 'Verify zero energy state by testing controls and checking gauges',
+          correctAnswerLabel: 'Verify zero energy state by testing controls and checking gauges',
+          isCorrect: true,
+          explanation: 'Always perform a zero-energy verification.',
+        },
+        {
+          questionId: 'q-ws-4',
+          quizId: 'mod-ws-q2',
+          quizTitle: 'Final Assessment: Emergency Response',
+          questionPrompt: 'What is your first priority when a continuous facility evacuation horn sounds?',
+          questionType: 'multiple_choice',
+          topicTag: 'Emergency Response',
+          tries: 1,
+          userAnswer: 1,
+          userAnswerLabel: 'Secure active tools safely and exit to your muster point',
+          correctAnswerLabel: 'Secure active tools safely and exit to your muster point',
+          isCorrect: true,
+          explanation: 'Proceed immediately to your muster station.',
+        },
+      ],
+      quizResults: [
+        { quizId: 'mod-ws-q1', quizTitle: 'Checkpoint 1: PPE & Energy Isolation', score: 100, passingScore: 70, passed: true, attempts: 1 },
+        { quizId: 'mod-ws-q2', quizTitle: 'Final Assessment: Emergency Response', score: 92, passingScore: 75, passed: true, attempts: 1 },
+      ],
+    },
+    {
+      _id: 'sub-seed-2',
+      courseId: 'course-clinical-hygiene',
+      courseTitle: 'Clinical Hygiene & Sterile Protocol',
+      certificateTitle: 'Certified Sterile Protocol Practitioner',
+      issuerName: 'CertiField Clinical Board',
+      userId: 'user-seed-elena',
+      userName: 'Elena Rostova',
+      userEmail: 'elena.rostova@fieldops.org',
+      overallScore: 92,
+      passed: true,
+      status: 'approved',
+      reviewedAt: daysAgo(3),
+      submittedAt: daysAgo(3, 10),
+      readingDurationSeconds: 690,
+      certificateId: 'cert-seed-2',
+      questionResults: [
+        {
+          questionId: 'q-ch-1',
+          quizId: 'mod-ch-q1',
+          quizTitle: 'Clinical Sterility Certification Exam',
+          questionPrompt: 'Items placed within the outer 1-inch edge of a sterile drape remain sterile if dry.',
+          questionType: 'true_false',
+          topicTag: 'Sterile Field',
+          tries: 1,
+          userAnswer: 1,
+          userAnswerLabel: 'False',
+          correctAnswerLabel: 'False',
+          isCorrect: true,
+          explanation: 'The outer 1-inch margin is always treated as contaminated.',
+        },
+      ],
+      quizResults: [
+        { quizId: 'mod-ch-q1', quizTitle: 'Clinical Sterility Certification Exam', score: 92, passingScore: 70, passed: true, attempts: 1 },
+      ],
+    },
+    {
+      _id: 'sub-seed-3',
+      courseId: 'course-workplace-safety',
+      courseTitle: 'Workplace Safety & Emergency Response',
+      certificateTitle: 'Certified Workplace Safety Specialist',
+      issuerName: 'CertiField Safety Institute',
+      userId: 'user-seed-marcus',
+      userName: 'Marcus Vance',
+      userEmail: 'marcus.vance@fieldops.org',
+      overallScore: 81,
+      passed: true,
+      status: 'approved',
+      reviewedAt: daysAgo(4),
+      submittedAt: daysAgo(4, 16),
+      readingDurationSeconds: 510,
+      certificateId: 'cert-seed-3',
+      questionResults: [
+        {
+          questionId: 'q-ws-1',
+          quizId: 'mod-ws-q1',
+          quizTitle: 'Checkpoint 1: PPE & Energy Isolation',
+          questionPrompt: 'After applying your personal padlock and tag to an isolation valve, what must you do before starting repairs?',
+          questionType: 'multiple_choice',
+          topicTag: 'Lockout-Tagout',
+          tries: 2,
+          userAnswer: 1,
+          userAnswerLabel: 'Verify zero energy state by testing controls and checking gauges',
+          correctAnswerLabel: 'Verify zero energy state by testing controls and checking gauges',
+          isCorrect: true,
+          explanation: 'Always perform a zero-energy verification.',
+        },
+      ],
+      quizResults: [
+        { quizId: 'mod-ws-q1', quizTitle: 'Checkpoint 1: PPE & Energy Isolation', score: 80, passingScore: 70, passed: true, attempts: 2 },
+        { quizId: 'mod-ws-q2', quizTitle: 'Final Assessment: Emergency Response', score: 82, passingScore: 75, passed: true, attempts: 1 },
+      ],
+    },
+    {
+      _id: 'sub-seed-4',
+      courseId: 'course-clinical-hygiene',
+      courseTitle: 'Clinical Hygiene & Sterile Protocol',
+      certificateTitle: 'Certified Sterile Protocol Practitioner',
+      issuerName: 'CertiField Clinical Board',
+      userId: 'user-seed-priya',
+      userName: 'Priya Nair',
+      userEmail: 'priya.nair@fieldops.org',
+      overallScore: 88,
+      passed: true,
+      status: 'pending_review',
+      submittedAt: daysAgo(1, 13),
+      readingDurationSeconds: 615,
+      questionResults: [
+        {
+          questionId: 'q-ch-2',
+          quizId: 'mod-ch-q1',
+          quizTitle: 'Clinical Sterility Certification Exam',
+          questionPrompt: 'Select all actions that compromise a sterile field.',
+          questionType: 'select_all',
+          topicTag: 'Asepsis',
+          tries: 1,
+          userAnswer: [0, 2, 3],
+          userAnswerLabel: 'Reaching over tray, Turning back, Moisture strike-through',
+          correctAnswerLabel: 'Reaching over tray, Turning back, Moisture strike-through',
+          isCorrect: true,
+          explanation: 'Keeping gloved hands above waist level preserves sterility.',
+        },
+      ],
+      quizResults: [
+        { quizId: 'mod-ch-q1', quizTitle: 'Clinical Sterility Certification Exam', score: 88, passingScore: 70, passed: true, attempts: 1 },
+      ],
+    },
+    {
+      _id: 'sub-seed-5',
+      courseId: 'course-workplace-safety',
+      courseTitle: 'Workplace Safety & Emergency Response',
+      certificateTitle: 'Certified Workplace Safety Specialist',
+      issuerName: 'CertiField Safety Institute',
+      userId: 'user-seed-david',
+      userName: 'David Chen',
+      userEmail: 'david.chen@fieldops.org',
+      overallScore: 58,
+      passed: false,
+      status: 'pending_review',
+      submittedAt: daysAgo(0, 10),
+      completedOfflineAt: daysAgo(0, 9),
+      readingDurationSeconds: 165,
+      questionResults: [
+        {
+          questionId: 'q-ws-3',
+          quizId: 'mod-ws-q1',
+          quizTitle: 'Checkpoint 1: PPE & Energy Isolation',
+          questionPrompt: 'Select all items required before entering an active machining aisle.',
+          questionType: 'select_all',
+          topicTag: 'PPE Standards',
+          tries: 3,
+          userAnswer: [0, 1],
+          userAnswerLabel: 'ANSI-rated hard hat, High-visibility safety vest',
+          correctAnswerLabel: 'ANSI-rated hard hat, High-visibility safety vest, Impact-rated safety eyewear',
+          isCorrect: false,
+          explanation: 'Impact eyewear is required alongside hard hat and vest.',
+        },
+      ],
+      quizResults: [
+        { quizId: 'mod-ws-q1', quizTitle: 'Checkpoint 1: PPE & Energy Isolation', score: 58, passingScore: 70, passed: false, attempts: 3 },
+      ],
+    },
+  ];
+
+  const certificates: import('../src/types/training.ts').CertificateRecord[] = [
+    {
+      _id: 'cert-seed-1',
+      certificateCode: 'CF-2026-9041B1',
+      submissionId: 'sub-seed-1',
+      courseId: 'course-workplace-safety',
+      courseTitle: 'Workplace Safety & Emergency Response',
+      certificateTitle: 'Certified Workplace Safety Specialist',
+      issuerName: 'CertiField Safety Institute',
+      userId: 'user-seed-elena',
+      userName: 'Elena Rostova',
+      userEmail: 'elena.rostova@fieldops.org',
+      score: 96,
+      issuedAt: daysAgo(5),
+      emailedCount: 1,
+    },
+    {
+      _id: 'cert-seed-2',
+      certificateCode: 'CF-2026-8824D7',
+      submissionId: 'sub-seed-2',
+      courseId: 'course-clinical-hygiene',
+      courseTitle: 'Clinical Hygiene & Sterile Protocol',
+      certificateTitle: 'Certified Sterile Protocol Practitioner',
+      issuerName: 'CertiField Clinical Board',
+      userId: 'user-seed-elena',
+      userName: 'Elena Rostova',
+      userEmail: 'elena.rostova@fieldops.org',
+      score: 92,
+      issuedAt: daysAgo(3),
+      emailedCount: 0,
+    },
+    {
+      _id: 'cert-seed-3',
+      certificateCode: 'CF-2026-7130A9',
+      submissionId: 'sub-seed-3',
+      courseId: 'course-workplace-safety',
+      courseTitle: 'Workplace Safety & Emergency Response',
+      certificateTitle: 'Certified Workplace Safety Specialist',
+      issuerName: 'CertiField Safety Institute',
+      userId: 'user-seed-marcus',
+      userName: 'Marcus Vance',
+      userEmail: 'marcus.vance@fieldops.org',
+      score: 81,
+      issuedAt: daysAgo(4),
+      emailedCount: 0,
+    },
+  ];
+
+  return { users, downloads, submissions, certificates };
+}

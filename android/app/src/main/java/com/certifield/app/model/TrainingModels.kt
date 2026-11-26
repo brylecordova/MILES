@@ -136,6 +136,7 @@ data class CourseSubmission(
     val reviewedAt: String? = null,
     val submittedAt: String,
     val completedOfflineAt: String? = null,
+    val readingDurationSeconds: Int = 0,
     val questionResults: List<QuestionAttemptRecord> = emptyList(),
     val quizResults: List<QuizAttemptSummary> = emptyList(),
     val certificateId: String? = null,
@@ -169,6 +170,7 @@ data class CourseProgressState(
     val quizAttempts: Map<String, Int> = emptyMap(),
     val latestQuestionResults: Map<String, QuestionAttemptRecord> = emptyMap(),
     val quizResults: Map<String, QuizAttemptSummary> = emptyMap(),
+    val readingDurationSeconds: Int = 0,
     val status: String = "not_started", // "not_started" | "in_progress" | "completed"
     val updatedAt: String = "",
 )
@@ -192,6 +194,7 @@ data class PendingOfflineSubmission(
     val overallScore: Int,
     val passed: Boolean,
     val completedOfflineAt: String,
+    val readingDurationSeconds: Int = 0,
     val questionResults: List<QuestionAttemptRecord>,
     val quizResults: List<QuizAttemptSummary>,
 )

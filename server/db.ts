@@ -4,12 +4,13 @@ import { MongoClient, type Collection, type Db } from 'mongodb';
 import type {
   CertificateRecord,
   Course,
+  CourseDownloadEvent,
   CourseSubmission,
   SystemBranding,
   UserAccount,
 } from '../src/types/training.ts';
 import { getDefaultSystemBranding } from '../src/utils/certificateDefaults.ts';
-import { getSeedCourses } from './seedData.ts';
+import { getSeedAnalyticsData, getSeedCourses } from './seedData.ts';
 
 export interface StoredUser extends UserAccount {
   passwordHash: string;
@@ -27,6 +28,7 @@ interface LocalDbSchema {
   users: StoredUser[];
   submissions: CourseSubmission[];
   certificates: CertificateRecord[];
+  downloads: CourseDownloadEvent[];
   settings: AdminSettingsDoc[];
 }
 
@@ -42,6 +44,7 @@ class DatabaseRepository {
     users: [],
     submissions: [],
     certificates: [],
+    downloads: [],
     settings: [],
   };
 
@@ -82,10 +85,18 @@ class DatabaseRepository {
           users: Array.isArray(parsed.users) ? parsed.users : [],
           submissions: Array.isArray(parsed.submissions) ? parsed.submissions : [],
           certificates: Array.isArray(parsed.certificates) ? parsed.certificates : [],
+          downloads: Array.isArray(parsed.downloads) ? parsed.downloads : [],
           settings: Array.isArray(parsed.settings) ? parsed.settings : [],
         };
       } catch {
-        this.localData = { courses: [], users: [], submissions: [], certificates: [], settings: [] };
+        this.localData = {
+          courses: [],
+          users: [],
+          submissions: [],
+          certificates: [],
+          downloads: [],
+          settings: [],
+        };
       }
     }
   }
@@ -112,9 +123,32 @@ class DatabaseRepository {
       if (count === 0) {
         await this.col<Course>('courses').insertMany(getSeedCourses());
       }
-    } else if (this.localData.courses.length === 0) {
-      this.localData.courses = getSeedCourses();
-      this.saveLocal();
+      const userCount = await this.col<StoredUser>('users').countDocuments();
+      const subCount = await this.col<CourseSubmission>('submissions').countDocuments();
+      if (userCount === 0 && subCount === 0) {
+        const seed = getSeedAnalyticsData();
+        if (seed.users.length) await this.col<StoredUser>('users').insertMany(seed.users);
+        if (seed.downloads.length) await this.col<CourseDownloadEvent>('downloads').insertMany(seed.downloads);
+        if (seed.submissions.length) await this.col<CourseSubmission>('submissions').insertMany(seed.submissions);
+        if (seed.certificates.length) await this.col<CertificateRecord>('certificates').insertMany(seed.certificates);
+      }
+    } else {
+      let changed = false;
+      if (this.localData.courses.length === 0) {
+        this.localData.courses = getSeedCourses();
+        changed = true;
+      }
+      if (this.localData.users.length === 0 && this.localData.submissions.length === 0) {
+        const seed = getSeedAnalyticsData();
+        this.localData.users = seed.users;
+        this.localData.downloads = seed.downloads;
+        this.localData.submissions = seed.submissions;
+        this.localData.certificates = seed.certificates;
+        changed = true;
+      }
+      if (changed) {
+        this.saveLocal();
+      }
     }
   }
 
@@ -197,6 +231,31 @@ class DatabaseRepository {
     this.localData.users.push(user);
     this.saveLocal();
     return user;
+  }
+
+  async listUsers(): Promise<StoredUser[]> {
+    if (this.mode === 'mongodb') {
+      return this.col<StoredUser>('users').find({}).toArray();
+    }
+    return [...this.localData.users];
+  }
+
+  // ---- Course Downloads ----
+  async recordDownloadEvent(event: CourseDownloadEvent): Promise<CourseDownloadEvent> {
+    if (this.mode === 'mongodb') {
+      await this.col<CourseDownloadEvent>('downloads').insertOne(event);
+      return event;
+    }
+    this.localData.downloads.push(event);
+    this.saveLocal();
+    return event;
+  }
+
+  async listDownloadEvents(): Promise<CourseDownloadEvent[]> {
+    if (this.mode === 'mongodb') {
+      return this.col<CourseDownloadEvent>('downloads').find({}).toArray();
+    }
+    return [...this.localData.downloads];
   }
 
   // ---- Admin Settings ----
@@ -338,6 +397,13 @@ class DatabaseRepository {
       return this.col<CertificateRecord>('certificates').findOne({ _id: id });
     }
     return this.localData.certificates.find((c) => c._id === id) ?? null;
+  }
+
+  async listAllCertificates(): Promise<CertificateRecord[]> {
+    if (this.mode === 'mongodb') {
+      return this.col<CertificateRecord>('certificates').find({}).sort({ issuedAt: -1 }).toArray();
+    }
+    return [...this.localData.certificates].sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
   }
 
   async updateCertificate(id: string, cert: CertificateRecord): Promise<CertificateRecord | null> {

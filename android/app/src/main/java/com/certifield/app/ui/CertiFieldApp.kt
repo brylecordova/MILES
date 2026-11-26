@@ -33,6 +33,7 @@ import com.certifield.app.data.QuizAnswerInput
 import com.certifield.app.data.QuizEngine
 import com.certifield.app.model.*
 import com.certifield.app.pdf.CertificatePdfHelper
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.Instant
@@ -42,6 +43,7 @@ enum class LearnerTab(val label: String) {
     DOWNLOADED("Downloaded"),
     FINISHED("Finished"),
     CERTIFICATES("Certificates"),
+    STATS("Stats"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,7 +103,7 @@ fun CertiFieldApp() {
                 store.saveProgress(next)
                 refreshLocal()
             },
-            onSubmitOnline = { score, passed, qRes, quizRes ->
+            onSubmitOnline = { score, passed, readingSecs, qRes, quizRes ->
                 api.submitCourse(
                     courseId = pkg.course._id,
                     courseTitle = pkg.course.title,
@@ -110,6 +112,7 @@ fun CertiFieldApp() {
                     overallScore = score,
                     passed = passed,
                     completedOfflineAt = null,
+                    readingDurationSeconds = readingSecs,
                     questionResults = qRes,
                     quizResults = quizRes,
                 )
@@ -166,6 +169,7 @@ fun CertiFieldApp() {
                         LearnerTab.DOWNLOADED -> Icons.Default.DownloadDone
                         LearnerTab.FINISHED -> Icons.Default.FactCheck
                         LearnerTab.CERTIFICATES -> Icons.Default.WorkspacePremium
+                        LearnerTab.STATS -> Icons.Default.BarChart
                     }
                     NavigationBarItem(
                         selected = activeTab == tab,
@@ -218,6 +222,9 @@ fun CertiFieldApp() {
                             store.downloadCourse(course, serverUrl) { pct ->
                                 downloadPct = downloadPct + (course._id to pct)
                             }
+                            if (!isOfflineMode) {
+                                api.trackCourseDownload(course._id)
+                            }
                             downloadPct = downloadPct - course._id
                             refreshLocal()
                         }
@@ -257,6 +264,7 @@ fun CertiFieldApp() {
                                     overallScore = item.overallScore,
                                     passed = item.passed,
                                     completedOfflineAt = item.completedOfflineAt,
+                                    readingDurationSeconds = item.readingDurationSeconds,
                                     questionResults = item.questionResults,
                                     quizResults = item.quizResults,
                                 )
@@ -275,6 +283,14 @@ fun CertiFieldApp() {
                     onViewPdf = { cert -> CertificatePdfHelper.openPdf(context, cert) },
                     onEmailPdf = { cert -> CertificatePdfHelper.emailPdf(context, cert) },
                     onRequireAuth = { showAuthDialog = true },
+                )
+
+                LearnerTab.STATS -> StatsDashboardScreen(
+                    downloadedPackages = downloadedPackages,
+                    progressMap = progressMap,
+                    pendingSubmissions = pendingSubmissions,
+                    submittedCourses = submittedCourses,
+                    certificates = certificates,
                 )
             }
         }
@@ -634,7 +650,7 @@ private fun CoursePlayerScreen(
     isOffline: Boolean,
     user: UserAccount?,
     onProgressChange: (CourseProgressState) -> Unit,
-    onSubmitOnline: suspend (Int, Boolean, List<QuestionAttemptRecord>, List<QuizAttemptSummary>) -> Unit,
+    onSubmitOnline: suspend (Int, Boolean, Int, List<QuestionAttemptRecord>, List<QuizAttemptSummary>) -> Unit,
     onSavePendingOffline: (PendingOfflineSubmission) -> Unit,
     onRequireAuth: () -> Unit,
     onExit: () -> Unit,
@@ -648,6 +664,22 @@ private fun CoursePlayerScreen(
     var errorText by remember { mutableStateOf<String?>(null) }
 
     val mod = pkg.course.modules.getOrNull(progress.currentModuleIndex)
+
+    LaunchedEffect(mod?.id, showSummary) {
+        if (!showSummary && mod?.kind == "lesson") {
+            while (true) {
+                delay(1000L)
+                val next = progress.copy(
+                    readingDurationSeconds = progress.readingDurationSeconds + 1,
+                    updatedAt = Instant.now().toString(),
+                )
+                progress = next
+                if (next.readingDurationSeconds % 5 == 0) {
+                    onProgressChange(next)
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -716,6 +748,7 @@ private fun CoursePlayerScreen(
                                         overallScore = score,
                                         passed = passed,
                                         completedOfflineAt = Instant.now().toString(),
+                                        readingDurationSeconds = progress.readingDurationSeconds,
                                         questionResults = orderedResults,
                                         quizResults = quizList,
                                     )
@@ -731,7 +764,7 @@ private fun CoursePlayerScreen(
                                     return@Button
                                 }
                                 scope.launch {
-                                    runCatching { onSubmitOnline(score, passed, orderedResults, quizList) }
+                                    runCatching { onSubmitOnline(score, passed, progress.readingDurationSeconds, orderedResults, quizList) }
                                         .onFailure { errorText = it.message }
                                 }
                             },
