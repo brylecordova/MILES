@@ -1,6 +1,7 @@
 package com.certifield.app.data
 
 import android.content.Context
+import android.util.Base64
 import com.certifield.app.model.CertificateRecord
 import com.certifield.app.model.Course
 import com.certifield.app.model.CourseProgressState
@@ -72,8 +73,18 @@ class OfflineCourseStore(private val context: Context) {
         withContext(Dispatchers.IO) {
             brandingFile.writeText(json.encodeToString(branding))
             val iconUrl = branding.iconUrl.trim()
-            if (iconUrl.isNotEmpty() && !iconUrl.endsWith(".svg", ignoreCase = true)) {
-                val resolved = if (iconUrl.startsWith("http", ignoreCase = true) || iconUrl.startsWith("data:", ignoreCase = true)) {
+            if (iconUrl.startsWith("data:image/", ignoreCase = true) && iconUrl.contains(",")) {
+                runCatching {
+                    val base64Part = iconUrl.substringAfter(",", "")
+                    if (base64Part.isNotEmpty() && !iconUrl.startsWith("data:image/svg+xml", ignoreCase = true)) {
+                        val bytes = Base64.decode(base64Part, Base64.DEFAULT)
+                        if (bytes.isNotEmpty()) {
+                            brandingIconFile.writeBytes(bytes)
+                        }
+                    }
+                }
+            } else if (iconUrl.isNotEmpty() && !iconUrl.endsWith(".svg", ignoreCase = true)) {
+                val resolved = if (iconUrl.startsWith("http", ignoreCase = true)) {
                     iconUrl
                 } else {
                     "${ApiClient.normalizeConnectionUrl(serverBaseUrl)}$iconUrl"
@@ -110,18 +121,31 @@ class OfflineCourseStore(private val context: Context) {
 
     // ---- Auth Credentials / Session Persistence for Offline Use ----
     fun loadAuthSession(): SavedAuthSession? {
-        if (!authSessionFile.exists()) return null
-        return runCatching {
-            json.decodeFromString<SavedAuthSession>(authSessionFile.readText())
-        }.getOrNull()
+        val fromFile = if (authSessionFile.exists()) {
+            runCatching { json.decodeFromString<SavedAuthSession>(authSessionFile.readText()) }.getOrNull()
+        } else null
+        if (fromFile != null) return fromFile
+
+        val fromPrefs = prefs.getString("auth_session", null)?.trim()
+        if (!fromPrefs.isNullOrEmpty()) {
+            val decoded = runCatching { json.decodeFromString<SavedAuthSession>(fromPrefs) }.getOrNull()
+            if (decoded != null) {
+                runCatching { authSessionFile.writeText(fromPrefs) }
+                return decoded
+            }
+        }
+        return null
     }
 
     fun saveAuthSession(session: SavedAuthSession) {
-        authSessionFile.writeText(json.encodeToString(session))
+        val encoded = json.encodeToString(session)
+        authSessionFile.writeText(encoded)
+        prefs.edit().putString("auth_session", encoded).commit()
     }
 
     fun clearAuthSession() {
         if (authSessionFile.exists()) authSessionFile.delete()
+        prefs.edit().remove("auth_session").commit()
         if (submissionsCacheFile.exists()) submissionsCacheFile.delete()
         if (certificatesCacheFile.exists()) certificatesCacheFile.delete()
     }

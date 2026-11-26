@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.certifield.app.model.*
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -264,9 +265,9 @@ fun StatsDashboardScreen(
     }
     val earnedCount = summary.medals.count { it.earned }
 
-    val cardBg = if (isDarkMode) Color(0xFF0F172A).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.94f)
+    val cardBg = if (isDarkMode) Color(0xFF0B1222).copy(alpha = 0.86f) else Color.White.copy(alpha = 0.90f)
     val subSurfaceBg = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF8FAFC)
-    val borderColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+    val borderColor = if (isDarkMode) Color(0xFF283548) else Color(0xFFE2E8F0)
     val textPrimary = if (isDarkMode) Color(0xFFF1F5F9) else Color(0xFF0F172A)
     val textSecondary = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
     val barTrackColor = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9)
@@ -277,14 +278,23 @@ fun StatsDashboardScreen(
 
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(vertical = 12.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 16.dp),
     ) {
         item {
             Column {
                 Text(
+                    text = "ANALYTICS · PERFORMANCE",
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.4.sp,
+                    color = brandAccent,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
                     "Learner Statistics",
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
                     color = textPrimary,
                 )
                 Spacer(Modifier.height(2.dp))

@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.view.ViewGroup
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -27,6 +28,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -49,11 +51,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.Instant
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 enum class LearnerTab(val label: String) {
     AVAILABLE("Courses"),
     DOWNLOADED("Saved"),
-    FINISHED("Finished"),
+    FINISHED("Done"),
     CERTIFICATES("Certs"),
     STATS("Stats"),
 }
@@ -68,7 +73,6 @@ private fun parseHexColor(hex: String?, fallback: Color): Color {
     }.getOrDefault(fallback)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CertiFieldApp() {
     val context = LocalContext.current
@@ -76,19 +80,21 @@ fun CertiFieldApp() {
     val store = remember { OfflineCourseStore(context) }
 
     var serverUrl by remember { mutableStateOf(store.loadServerUrl(BuildConfig.DEFAULT_SERVER_URL)) }
-    val api = remember { ApiClient { serverUrl } }
+    val savedSession = remember { store.loadAuthSession() }
+    val api = remember {
+        ApiClient { serverUrl }.apply {
+            if (savedSession != null) {
+                token = savedSession.token
+            }
+        }
+    }
 
     var isDarkMode by remember { mutableStateOf(store.loadDarkMode()) }
     var branding by remember { mutableStateOf(store.loadBranding()) }
     var cachedIconFile by remember { mutableStateOf(store.getCachedBrandingIconFile()) }
 
-    val savedSession = remember { store.loadAuthSession() }
+    // Signed-in state persists across offline/online transitions and restarts until user manually signs out
     var user by remember { mutableStateOf<UserAccount?>(savedSession?.user) }
-    LaunchedEffect(Unit) {
-        if (savedSession != null) {
-            api.token = savedSession.token
-        }
-    }
 
     var hasNetworkTransport by remember {
         mutableStateOf(
@@ -99,6 +105,7 @@ fun CertiFieldApp() {
             }.getOrDefault(false)
         )
     }
+    var networkRevision by remember { mutableIntStateOf(0) }
     var isConnected by remember { mutableStateOf(false) }
 
     var activeTab by remember { mutableStateOf(LearnerTab.AVAILABLE) }
@@ -115,18 +122,23 @@ fun CertiFieldApp() {
     var activePlayerPkg by remember { mutableStateOf<DownloadedCoursePackage?>(null) }
     var bannerMessage by remember { mutableStateOf<String?>(null) }
 
-    // Observe real device network changes automatically (no manual offline toggle)
+    // Automatic OS Wi-Fi / mobile data detection only (no manual offline/online toggle)
     DisposableEffect(context) {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 hasNetworkTransport = true
+                networkRevision += 1
             }
 
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                hasNetworkTransport = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                if (!hasNetworkTransport) {
+                val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                val validated = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                hasNetworkTransport = hasInternet
+                if (!hasInternet) {
                     isConnected = false
+                } else if (validated && !isConnected) {
+                    networkRevision += 1
                 }
             }
 
@@ -154,12 +166,16 @@ fun CertiFieldApp() {
     suspend fun refreshRemote() {
         if (!hasNetworkTransport) {
             isConnected = false
-            bannerMessage = "Offline mode active; saved courses and credentials remain ready."
+            bannerMessage = "Wi-Fi / network is off; downloaded courses and saved account remain available."
             return
         }
         var healthy = api.checkHealth()
         if (!healthy) {
             delay(500L)
+            healthy = api.checkHealth()
+        }
+        if (!healthy) {
+            delay(1000L)
             healthy = api.checkHealth()
         }
         isConnected = healthy
@@ -180,6 +196,7 @@ fun CertiFieldApp() {
             courses = api.fetchCourses()
         }
 
+        // Never auto-sign-out on transient failures; keep cached credentials until manual logout
         if (user != null && api.token != null) {
             runCatching {
                 val subs = api.fetchMySubmissions()
@@ -194,7 +211,7 @@ fun CertiFieldApp() {
         }
     }
 
-    LaunchedEffect(serverUrl, user, hasNetworkTransport) {
+    LaunchedEffect(serverUrl, user, hasNetworkTransport, networkRevision) {
         refreshRemote()
     }
 
@@ -205,12 +222,12 @@ fun CertiFieldApp() {
             primary = brandAccent,
             onPrimary = Color(0xFF041322),
             background = Color(0xFF030712),
-            surface = Color(0xFF0F172A),
+            surface = Color(0xFF0B1222),
             surfaceVariant = Color(0xFF1E293B),
             onBackground = Color(0xFFF1F5F9),
             onSurface = Color(0xFFF1F5F9),
             onSurfaceVariant = Color(0xFF94A3B8),
-            outline = Color(0xFF334155),
+            outline = Color(0xFF283548),
         )
     } else {
         lightColorScheme(
@@ -229,7 +246,8 @@ fun CertiFieldApp() {
     MaterialTheme(colorScheme = colorScheme) {
         val textPrimary = MaterialTheme.colorScheme.onBackground
         val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
-        val cardBg = if (isDarkMode) Color(0xFF0F172A).copy(alpha = 0.88f) else Color.White.copy(alpha = 0.94f)
+        val cardBg = if (isDarkMode) Color(0xFF0B1222).copy(alpha = 0.86f) else Color.White.copy(alpha = 0.90f)
+        val chromeBg = if (isDarkMode) Color(0xFF060B18).copy(alpha = 0.94f) else Color.White.copy(alpha = 0.92f)
         val borderColor = MaterialTheme.colorScheme.outline
 
         Box(modifier = Modifier.fillMaxSize()) {
@@ -246,6 +264,10 @@ fun CertiFieldApp() {
                     initialProgress = progressMap[pkg.courseId] ?: CourseProgressState(courseId = pkg.courseId),
                     isConnected = isConnected,
                     isDarkMode = isDarkMode,
+                    onToggleDarkMode = {
+                        isDarkMode = !isDarkMode
+                        store.saveDarkMode(isDarkMode)
+                    },
                     brandAccent = brandAccent,
                     user = user,
                     onProgressChange = { next ->
@@ -287,134 +309,190 @@ fun CertiFieldApp() {
             Scaffold(
                 containerColor = Color.Transparent,
                 topBar = {
-                    TopAppBar(
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = if (isDarkMode) Color(0xFF070B19).copy(alpha = 0.92f)
-                            else Color.White.copy(alpha = 0.92f),
-                            titleContentColor = textPrimary,
-                        ),
-                        title = {
+                    Surface(
+                        color = chromeBg,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .statusBarsPadding()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
                             ) {
-                                BrandLogoBadge(
-                                    cachedIconFile = cachedIconFile,
-                                    branding = branding,
-                                    serverUrl = serverUrl,
-                                    isConnected = isConnected,
-                                    brandAccent = brandAccent,
-                                )
-                                Text(
-                                    text = branding.systemName.ifBlank { "CertiField" },
-                                    fontWeight = FontWeight.ExtraBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = textPrimary,
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    BrandLogoBadge(
+                                        cachedIconFile = cachedIconFile,
+                                        branding = branding,
+                                        serverUrl = serverUrl,
+                                        isConnected = isConnected,
+                                        brandAccent = brandAccent,
+                                    )
+                                    Text(
+                                        text = branding.systemName.ifBlank { "CertiField" },
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = textPrimary,
+                                    )
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Surface(
+                                        onClick = {
+                                            isDarkMode = !isDarkMode
+                                            store.saveDarkMode(isDarkMode)
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                                        border = BorderStroke(1.dp, borderColor),
+                                        modifier = Modifier.size(34.dp),
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                                contentDescription = if (isDarkMode) "Switch to Light Mode" else "Switch to Dark Mode",
+                                                tint = if (isDarkMode) Color(0xFFFBBF24) else textPrimary,
+                                                modifier = Modifier.size(17.dp),
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        onClick = { showConnectionDialog = true },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isConnected) Color(0xFF10B981).copy(alpha = 0.65f) else borderColor,
+                                        ),
+                                        modifier = Modifier.height(34.dp),
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 8.dp),
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(7.dp)
+                                                    .clip(CircleShape)
+                                                    .background(
+                                                        if (isConnected) Color(0xFF10B981)
+                                                        else Color(0xFFF59E0B)
+                                                    )
+                                            )
+                                            Spacer(Modifier.width(5.dp))
+                                            Text(
+                                                "CONNECTION",
+                                                fontSize = 9.5.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                color = textPrimary,
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        onClick = { showAuthDialog = true },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = brandAccent.copy(alpha = if (isDarkMode) 0.16f else 0.10f),
+                                        border = BorderStroke(1.dp, brandAccent.copy(alpha = 0.45f)),
+                                        modifier = Modifier.height(34.dp),
+                                    ) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.padding(horizontal = 9.dp),
+                                        ) {
+                                            Text(
+                                                text = user?.name?.split(" ")?.firstOrNull() ?: "Sign In",
+                                                fontSize = 11.sp,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis,
+                                                fontWeight = FontWeight.Bold,
+                                                color = brandAccent,
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                        },
-                        actions = {
-                            IconButton(
-                                onClick = {
-                                    isDarkMode = !isDarkMode
-                                    store.saveDarkMode(isDarkMode)
-                                },
-                            ) {
-                                Icon(
-                                    imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
-                                    contentDescription = if (isDarkMode) "Switch to Light Mode" else "Switch to Dark Mode",
-                                    tint = textPrimary,
-                                )
-                            }
-                            OutlinedButton(
-                                onClick = { showConnectionDialog = true },
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isConnected) Color(0xFF10B981).copy(alpha = 0.6f)
-                                    else borderColor
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.height(34.dp),
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(7.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isConnected) Color(0xFF10B981) else Color(0xFFF59E0B))
-                                )
-                                Spacer(Modifier.width(5.dp))
-                                Text(
-                                    "CONNECTION",
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    color = textPrimary,
-                                )
-                            }
-                            TextButton(
-                                onClick = { showAuthDialog = true },
-                                contentPadding = PaddingValues(horizontal = 8.dp),
-                            ) {
-                                Text(
-                                    text = user?.name?.split(" ")?.firstOrNull() ?: "Sign In",
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = brandAccent,
-                                )
-                            }
-                        },
-                    )
+                            HorizontalDivider(color = borderColor)
+                        }
+                    }
                 },
                 bottomBar = {
-                    NavigationBar(
-                        containerColor = if (isDarkMode) Color(0xFF070B19).copy(alpha = 0.96f)
-                        else Color.White.copy(alpha = 0.96f),
-                        tonalElevation = 0.dp,
+                    Surface(
+                        color = chromeBg,
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        LearnerTab.entries.forEach { tab ->
-                            val icon = when (tab) {
-                                LearnerTab.AVAILABLE -> Icons.Default.MenuBook
-                                LearnerTab.DOWNLOADED -> Icons.Default.DownloadDone
-                                LearnerTab.FINISHED -> Icons.Default.FactCheck
-                                LearnerTab.CERTIFICATES -> Icons.Default.WorkspacePremium
-                                LearnerTab.STATS -> Icons.Default.BarChart
+                        Column {
+                            HorizontalDivider(color = borderColor)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .navigationBarsPadding()
+                                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                LearnerTab.entries.forEach { tab ->
+                                    val selected = activeTab == tab
+                                    val icon = when (tab) {
+                                        LearnerTab.AVAILABLE -> Icons.Default.MenuBook
+                                        LearnerTab.DOWNLOADED -> Icons.Default.DownloadDone
+                                        LearnerTab.FINISHED -> Icons.Default.CheckCircle
+                                        LearnerTab.CERTIFICATES -> Icons.Default.WorkspacePremium
+                                        LearnerTab.STATS -> Icons.Default.BarChart
+                                    }
+                                    Surface(
+                                        onClick = {
+                                            activeTab = tab
+                                            scope.launch { refreshRemote() }
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (selected) brandAccent.copy(alpha = if (isDarkMode) 0.16f else 0.11f)
+                                        else Color.Transparent,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(54.dp),
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center,
+                                            modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
+                                        ) {
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = tab.label,
+                                                tint = if (selected) brandAccent else textSecondary,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                            Spacer(Modifier.height(3.dp))
+                                            Text(
+                                                text = tab.label,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis,
+                                                fontSize = 11.sp,
+                                                lineHeight = 12.sp,
+                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (selected) brandAccent else textSecondary,
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                            NavigationBarItem(
-                                selected = activeTab == tab,
-                                onClick = {
-                                    activeTab = tab
-                                    scope.launch { refreshRemote() }
-                                },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = brandAccent,
-                                    selectedTextColor = brandAccent,
-                                    indicatorColor = brandAccent.copy(alpha = 0.14f),
-                                    unselectedIconColor = textSecondary,
-                                    unselectedTextColor = textSecondary,
-                                ),
-                                icon = {
-                                    Icon(
-                                        imageVector = icon,
-                                        contentDescription = tab.label,
-                                        modifier = Modifier.size(21.dp),
-                                    )
-                                },
-                                label = {
-                                    Text(
-                                        text = tab.label,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Ellipsis,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (activeTab == tab) FontWeight.Bold else FontWeight.Medium,
-                                    )
-                                },
-                            )
                         }
                     }
                 },
@@ -433,7 +511,7 @@ fun CertiFieldApp() {
                                 if (isDarkMode) Color(0xFFB45309).copy(alpha = 0.6f) else Color(0xFFFDE68A)
                             ),
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
                         ) {
                             Text(
                                 text = msg,
@@ -482,6 +560,7 @@ fun CertiFieldApp() {
                         LearnerTab.DOWNLOADED -> DownloadedCoursesTab(
                             packages = downloadedPackages,
                             progressMap = progressMap,
+                            isDarkMode = isDarkMode,
                             brandAccent = brandAccent,
                             cardBg = cardBg,
                             borderColor = borderColor,
@@ -565,6 +644,7 @@ fun CertiFieldApp() {
             AuthDialog(
                 api = api,
                 isConnected = isConnected,
+                isDarkMode = isDarkMode,
                 currentUser = user,
                 brandAccent = brandAccent,
                 onDismiss = { showAuthDialog = false },
@@ -597,7 +677,7 @@ fun CertiFieldApp() {
             ConnectionConfigDialog(
                 currentUrl = serverUrl,
                 defaultHostedUrl = BuildConfig.DEFAULT_SERVER_URL,
-                api = api,
+                isDarkMode = isDarkMode,
                 brandAccent = brandAccent,
                 onDismiss = { showConnectionDialog = false },
                 onSaveAndConnect = { normalizedUrl ->
@@ -612,14 +692,76 @@ fun CertiFieldApp() {
 }
 
 @Composable
+private fun SectionHeaderBlock(
+    kicker: String,
+    title: String,
+    subtitle: String,
+    accent: Color,
+    textPrimary: Color,
+    textSecondary: Color,
+) {
+    Column(modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)) {
+        Text(
+            text = kicker,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.4.sp,
+            color = accent,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.ExtraBold,
+            color = textPrimary,
+        )
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = textSecondary,
+        )
+    }
+}
+
+@Composable
 private fun FuturisticAppBackdrop(
     isDarkMode: Boolean,
     accentColor: Color,
 ) {
     val baseBg = if (isDarkMode) Color(0xFF030712) else Color(0xFFF4F7FB)
-    val glowTop = if (isDarkMode) accentColor.copy(alpha = 0.22f) else accentColor.copy(alpha = 0.12f)
-    val glowBottom = if (isDarkMode) Color(0xFF0EA5E9).copy(alpha = 0.14f) else Color(0xFF0284C7).copy(alpha = 0.08f)
-    val gridColor = if (isDarkMode) Color(0xFF1E293B).copy(alpha = 0.48f) else Color(0xFFCBD5E1).copy(alpha = 0.38f)
+    val glowTop = if (isDarkMode) accentColor.copy(alpha = 0.24f) else accentColor.copy(alpha = 0.13f)
+    val glowBottom = if (isDarkMode) Color(0xFF0EA5E9).copy(alpha = 0.16f) else Color(0xFF0284C7).copy(alpha = 0.09f)
+    val gridColor = if (isDarkMode) Color(0xFF1E293B).copy(alpha = 0.48f) else Color(0xFFCBD5E1).copy(alpha = 0.42f)
+    val nodeColor = if (isDarkMode) Color(0xFF38BDF8) else Color(0xFF1D4ED8)
+
+    val transition = rememberInfiniteTransition(label = "futuristic_constellation")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 16000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "phase",
+    )
+
+    val nodeSeeds = remember {
+        listOf(
+            floatArrayOf(0.14f, 0.18f, 0.5f, 1.0f),
+            floatArrayOf(0.36f, 0.12f, 1.4f, 0.8f),
+            floatArrayOf(0.68f, 0.21f, 2.3f, 1.1f),
+            floatArrayOf(0.86f, 0.14f, 3.1f, 0.9f),
+            floatArrayOf(0.22f, 0.42f, 0.9f, 1.2f),
+            floatArrayOf(0.54f, 0.38f, 2.1f, 0.7f),
+            floatArrayOf(0.80f, 0.48f, 3.8f, 1.0f),
+            floatArrayOf(0.12f, 0.68f, 4.4f, 0.9f),
+            floatArrayOf(0.44f, 0.74f, 5.1f, 1.1f),
+            floatArrayOf(0.72f, 0.69f, 1.8f, 0.8f),
+            floatArrayOf(0.90f, 0.82f, 2.7f, 1.0f),
+            floatArrayOf(0.28f, 0.88f, 3.5f, 0.9f),
+        )
+    }
 
     Canvas(
         modifier = Modifier
@@ -629,37 +771,59 @@ private fun FuturisticAppBackdrop(
         drawRect(
             brush = Brush.radialGradient(
                 colors = listOf(glowTop, Color.Transparent),
-                center = Offset(size.width * 0.85f, size.height * 0.08f),
-                radius = size.width * 0.85f,
+                center = Offset(size.width * 0.86f, size.height * 0.08f),
+                radius = size.width * 0.9f,
             )
         )
         drawRect(
             brush = Brush.radialGradient(
                 colors = listOf(glowBottom, Color.Transparent),
-                center = Offset(size.width * 0.12f, size.height * 0.88f),
-                radius = size.width * 0.75f,
+                center = Offset(size.width * 0.10f, size.height * 0.88f),
+                radius = size.width * 0.8f,
             )
         )
-        val step = 34.dp.toPx()
+
+        val step = 32.dp.toPx()
         var x = 0f
         while (x < size.width) {
-            drawLine(
-                color = gridColor,
-                start = Offset(x, 0f),
-                end = Offset(x, size.height),
-                strokeWidth = 1f,
-            )
+            drawLine(color = gridColor, start = Offset(x, 0f), end = Offset(x, size.height), strokeWidth = 1f)
             x += step
         }
         var y = 0f
         while (y < size.height) {
-            drawLine(
-                color = gridColor,
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = 1f,
-            )
+            drawLine(color = gridColor, start = Offset(0f, y), end = Offset(size.width, y), strokeWidth = 1f)
             y += step
+        }
+
+        val pts = ArrayList<Offset>(nodeSeeds.size)
+        val driftPx = 14.dp.toPx()
+        nodeSeeds.forEach { s ->
+            val px = s[0] * size.width + cos(phase * s[3] + s[2]) * driftPx
+            val py = s[1] * size.height + sin(phase * s[3] + s[2]) * driftPx
+            pts.add(Offset(px, py))
+        }
+
+        val maxDist = size.width * 0.36f
+        for (i in pts.indices) {
+            for (j in i + 1 until pts.size) {
+                val dx = pts[i].x - pts[j].x
+                val dy = pts[i].y - pts[j].y
+                val distSq = dx * dx + dy * dy
+                if (distSq < maxDist * maxDist) {
+                    val alpha = (1f - kotlin.math.sqrt(distSq) / maxDist) * (if (isDarkMode) 0.22f else 0.14f)
+                    drawLine(
+                        color = nodeColor.copy(alpha = alpha),
+                        start = pts[i],
+                        end = pts[j],
+                        strokeWidth = 1.1f,
+                    )
+                }
+            }
+            drawCircle(
+                color = nodeColor.copy(alpha = if (isDarkMode) 0.40f else 0.26f),
+                radius = 2.6.dp.toPx(),
+                center = pts[i],
+            )
         }
     }
 }
@@ -717,7 +881,7 @@ private fun BrandLogoBadge(
 private fun ConnectionConfigDialog(
     currentUrl: String,
     defaultHostedUrl: String,
-    api: ApiClient,
+    isDarkMode: Boolean,
     brandAccent: Color,
     onDismiss: () -> Unit,
     onSaveAndConnect: (String) -> Unit,
@@ -729,12 +893,26 @@ private fun ConnectionConfigDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Server Connection", fontWeight = FontWeight.Bold) },
+        containerColor = if (isDarkMode) Color(0xFF0F172A) else Color.White,
+        shape = RoundedCornerShape(20.dp),
+        title = {
+            Column {
+                Text(
+                    "SERVER CONNECTION",
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = brandAccent,
+                )
+                Text("Configure Host URL", fontWeight = FontWeight.Bold)
+            }
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "Configure the backend host (LAN IP for physical devices, 10.0.2.2:3000 for Android Emulator, or a hosted HTTPS URL).",
+                    "Enter a LAN IP (e.g. 192.168.1.50:3000), Android Emulator host (10.0.2.2:3000), or a hosted HTTPS site link.",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
                     value = urlDraft,
@@ -757,7 +935,7 @@ private fun ConnectionConfigDialog(
                             urlDraft = "http://10.0.2.2:3000"
                             testResult = null
                         },
-                        label = { Text("Emulator 10.0.2.2", maxLines = 1, fontSize = 11.sp) },
+                        label = { Text("Emulator", maxLines = 1, fontSize = 11.sp) },
                     )
                     FilterChip(
                         selected = urlDraft.trim() == defaultHostedUrl.trim(),
@@ -765,7 +943,7 @@ private fun ConnectionConfigDialog(
                             urlDraft = defaultHostedUrl
                             testResult = null
                         },
-                        label = { Text("Hosted Default", maxLines = 1, fontSize = 11.sp) },
+                        label = { Text("Hosted Site", maxLines = 1, fontSize = 11.sp) },
                     )
                 }
                 OutlinedButton(
@@ -794,7 +972,7 @@ private fun ConnectionConfigDialog(
                     enabled = !testing,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(if (testing) "Testing Connection..." else "Test Connection & Branding")
+                    Text(if (testing) "Testing..." else "Test Connection & Branding")
                 }
                 testResult?.let { (ok, msg) ->
                     Text(
@@ -840,95 +1018,116 @@ private fun AvailableCoursesTab(
     onDownload: (Course) -> Unit,
     onOpen: (String) -> Unit,
 ) {
-    if (courses.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                text = if (isConnected) "No published courses available yet."
-                else "No network connection. Open Saved tab for offline courses.",
-                color = textSecondary,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-        return
-    }
-
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(vertical = 12.dp),
+        contentPadding = PaddingValues(bottom = 16.dp),
     ) {
-        items(courses, key = { it._id }) { course ->
-            val isDownloaded = downloadedIds.contains(course._id)
-            val pct = downloadPct[course._id]
-            val normalizedBase = ApiClient.normalizeConnectionUrl(serverUrl)
-            val bannerModel = if (course.bannerUrl.startsWith("http")) course.bannerUrl
-            else "$normalizedBase${course.bannerUrl}"
+        item {
+            SectionHeaderBlock(
+                kicker = "OFFLINE CATALOG",
+                title = "Available Courses",
+                subtitle = "Download complete courses with videos & quizzes for offline field study.",
+                accent = brandAccent,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+            )
+        }
 
-            Card(
-                colors = CardDefaults.cardColors(containerColor = cardBg),
-                border = BorderStroke(1.dp, borderColor),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Column {
-                    if (course.bannerUrl.isNotBlank()) {
-                        AsyncImage(
-                            model = bannerModel,
-                            contentDescription = course.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth().height(160.dp),
-                        )
-                    }
-                    Column(Modifier.padding(16.dp)) {
-                        Text(
-                            "${course.category} · ${course.modules.count { it.kind == "lesson" }} lessons · ${course.modules.count { it.kind == "quiz" }} quizzes",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = textSecondary,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            course.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = textPrimary,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            course.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = textSecondary,
-                        )
-                        Spacer(Modifier.height(14.dp))
-                        if (isDownloaded) {
-                            Button(
-                                onClick = { onOpen(course._id) },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isDarkMode) Color(0xFF059669) else Color(0xFF15803D)
-                                ),
-                                modifier = Modifier.fillMaxWidth().height(48.dp),
-                            ) {
-                                Text("Downloaded · Open Course", color = Color.White)
-                            }
-                        } else if (pct != null) {
-                            LinearProgressIndicator(
-                                progress = { pct / 100f },
+        if (courses.isEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    border = BorderStroke(1.dp, borderColor),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text(
+                        text = if (isConnected) "No published courses available yet."
+                        else "No network connection. Open Saved tab for downloaded courses.",
+                        color = textSecondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(20.dp),
+                    )
+                }
+            }
+        } else {
+            items(courses, key = { it._id }) { course ->
+                val isDownloaded = downloadedIds.contains(course._id)
+                val pct = downloadPct[course._id]
+                val normalizedBase = ApiClient.normalizeConnectionUrl(serverUrl)
+                val bannerModel = if (course.bannerUrl.startsWith("http")) course.bannerUrl
+                else "$normalizedBase${course.bannerUrl}"
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    border = BorderStroke(1.dp, borderColor),
+                    shape = RoundedCornerShape(18.dp),
+                ) {
+                    Column {
+                        if (course.bannerUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = bannerModel,
+                                contentDescription = course.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxWidth().height(160.dp),
+                            )
+                        }
+                        Column(Modifier.padding(16.dp)) {
+                            Text(
+                                "${course.category.uppercase()} · ${course.modules.count { it.kind == "lesson" }} LESSONS · ${course.modules.count { it.kind == "quiz" }} QUIZZES",
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
                                 color = brandAccent,
-                                modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "Downloading offline media: $pct%",
-                                style = MaterialTheme.typography.labelSmall,
+                                course.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = textPrimary,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                course.description,
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = textSecondary,
                             )
-                        } else {
-                            Button(
-                                onClick = { onDownload(course) },
-                                enabled = isConnected,
-                                colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
-                                modifier = Modifier.fillMaxWidth().height(48.dp),
-                            ) {
-                                Icon(Icons.Default.Download, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(if (!isConnected) "Connect to Download" else "Download for Offline")
+                            Spacer(Modifier.height(14.dp))
+                            if (isDownloaded) {
+                                Button(
+                                    onClick = { onOpen(course._id) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isDarkMode) Color(0xFF059669) else Color(0xFF15803D)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                ) {
+                                    Text("Saved Offline · Open Course", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            } else if (pct != null) {
+                                LinearProgressIndicator(
+                                    progress = { pct / 100f },
+                                    color = brandAccent,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Downloading offline media: $pct%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = textSecondary,
+                                )
+                            } else {
+                                Button(
+                                    onClick = { onDownload(course) },
+                                    enabled = isConnected,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(if (!isConnected) "Connect Wi-Fi to Download" else "Download for Offline")
+                                }
                             }
                         }
                     }
@@ -942,6 +1141,7 @@ private fun AvailableCoursesTab(
 private fun DownloadedCoursesTab(
     packages: List<DownloadedCoursePackage>,
     progressMap: Map<String, CourseProgressState>,
+    isDarkMode: Boolean,
     brandAccent: Color,
     cardBg: Color,
     borderColor: Color,
@@ -961,13 +1161,22 @@ private fun DownloadedCoursesTab(
     }
 
     Column(Modifier.fillMaxSize()) {
+        SectionHeaderBlock(
+            kicker = "LOCAL LIBRARY",
+            title = "Saved Courses",
+            subtitle = "Stored directly on your device for uninterrupted offline study.",
+            accent = brandAccent,
+            textPrimary = textPrimary,
+            textSecondary = textSecondary,
+        )
+
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(vertical = 8.dp),
+            modifier = Modifier.padding(bottom = 10.dp),
         ) {
-            FilterChip(selected = filter == "all", onClick = { filter = "all" }, label = { Text("All") })
-            FilterChip(selected = filter == "not_started", onClick = { filter = "not_started" }, label = { Text("Not Started") })
-            FilterChip(selected = filter == "in_progress", onClick = { filter = "in_progress" }, label = { Text("In Progress") })
+            FilterChip(selected = filter == "all", onClick = { filter = "all" }, label = { Text("All", maxLines = 1) })
+            FilterChip(selected = filter == "not_started", onClick = { filter = "not_started" }, label = { Text("New", maxLines = 1) })
+            FilterChip(selected = filter == "in_progress", onClick = { filter = "in_progress" }, label = { Text("Active", maxLines = 1) })
         }
 
         if (filtered.isEmpty()) {
@@ -977,7 +1186,7 @@ private fun DownloadedCoursesTab(
         } else {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 12.dp),
+                contentPadding = PaddingValues(bottom = 16.dp),
             ) {
                 items(filtered, key = { it.courseId }) { pkg ->
                     val prog = progressMap[pkg.courseId]
@@ -988,18 +1197,21 @@ private fun DownloadedCoursesTab(
                     Card(
                         colors = CardDefaults.cardColors(containerColor = cardBg),
                         border = BorderStroke(1.dp, borderColor),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(18.dp),
                     ) {
                         Column(Modifier.padding(16.dp)) {
                             Text(
                                 when (status) {
-                                    "completed" -> "Completed"
-                                    "in_progress" -> "In Progress · $done / $total modules"
-                                    else -> "Not Started"
+                                    "completed" -> "COMPLETED · READY TO REVIEW"
+                                    "in_progress" -> "IN PROGRESS · $done / $total MODULES"
+                                    else -> "NOT STARTED"
                                 },
-                                style = MaterialTheme.typography.labelMedium,
-                                color = brandAccent,
-                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (status == "completed") {
+                                    if (isDarkMode) Color(0xFF34D399) else Color(0xFF15803D)
+                                } else brandAccent,
+                                fontWeight = FontWeight.Bold,
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
@@ -1008,16 +1220,17 @@ private fun DownloadedCoursesTab(
                                 fontWeight = FontWeight.Bold,
                                 color = textPrimary,
                             )
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(10.dp))
                             LinearProgressIndicator(
                                 progress = { done.toFloat() / total.toFloat() },
                                 color = brandAccent,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)),
                             )
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(14.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(
                                     onClick = { onOpen(pkg) },
+                                    shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.weight(1f).height(46.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
                                 ) {
@@ -1025,6 +1238,7 @@ private fun DownloadedCoursesTab(
                                 }
                                 OutlinedButton(
                                     onClick = { onRemove(pkg.courseId) },
+                                    shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.height(46.dp),
                                 ) {
                                     Icon(Icons.Default.Delete, contentDescription = "Remove")
@@ -1055,23 +1269,40 @@ private fun FinishedCoursesTab(
 ) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(vertical = 12.dp),
+        contentPadding = PaddingValues(bottom = 16.dp),
     ) {
+        item {
+            SectionHeaderBlock(
+                kicker = "SYNC & REVIEWS",
+                title = "Completed Courses",
+                subtitle = "Queue offline completions and track admin review status.",
+                accent = brandAccent,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+            )
+        }
         item {
             Text(
                 "Pending Submission (Offline Queue)",
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = textPrimary,
             )
         }
         if (pending.isEmpty()) {
             item {
-                Text(
-                    "No offline completions waiting to sync.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = textSecondary,
-                )
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    border = BorderStroke(1.dp, borderColor),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text(
+                        "No offline completions waiting to sync.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textSecondary,
+                        modifier = Modifier.padding(14.dp),
+                    )
+                }
             }
         } else {
             items(pending, key = { it.id }) { item ->
@@ -1083,6 +1314,7 @@ private fun FinishedCoursesTab(
                         1.dp,
                         if (isDarkMode) Color(0xFFB45309).copy(alpha = 0.55f) else Color(0xFFFDE68A)
                     ),
+                    shape = RoundedCornerShape(16.dp),
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Text(item.courseTitle, fontWeight = FontWeight.Bold, color = textPrimary)
@@ -1095,10 +1327,11 @@ private fun FinishedCoursesTab(
                         Button(
                             onClick = { onSubmitPending(item) },
                             enabled = isConnected,
+                            shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
                             modifier = Modifier.fillMaxWidth().height(44.dp),
                         ) {
-                            Text(if (!isConnected) "Connect to Submit" else "Submit Now")
+                            Text(if (!isConnected) "Connect Wi-Fi to Submit" else "Submit Now")
                         }
                     }
                 }
@@ -1106,10 +1339,10 @@ private fun FinishedCoursesTab(
         }
 
         item {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 "Submitted Courses",
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = textPrimary,
             )
@@ -1118,30 +1351,50 @@ private fun FinishedCoursesTab(
             item {
                 Button(
                     onClick = onRequireAuth,
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
                 ) { Text("Sign In to View Submissions") }
             }
         } else if (submitted.isEmpty()) {
             item {
-                Text(
-                    "No submitted courses cached yet.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = textSecondary,
-                )
-            }
-        } else {
-            items(submitted, key = { it._id }) { sub ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = cardBg),
                     border = BorderStroke(1.dp, borderColor),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text(
+                        "No submitted courses cached yet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textSecondary,
+                        modifier = Modifier.padding(14.dp),
+                    )
+                }
+            }
+        } else {
+            items(submitted, key = { it._id }) { sub ->
+                val statusColor = when (sub.status) {
+                    "approved" -> if (isDarkMode) Color(0xFF34D399) else Color(0xFF15803D)
+                    "rejected" -> if (isDarkMode) Color(0xFFF87171) else Color(0xFFDC2626)
+                    else -> if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706)
+                }
+                val label = when (sub.status) {
+                    "approved" -> "APPROVED"
+                    "rejected" -> "REJECTED"
+                    else -> "PENDING ADMIN REVIEW"
+                }
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    border = BorderStroke(1.dp, borderColor),
+                    shape = RoundedCornerShape(16.dp),
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        val label = when (sub.status) {
-                            "approved" -> "Approved"
-                            "rejected" -> "Rejected"
-                            else -> "Pending Admin Review"
-                        }
-                        Text("$label · Score ${sub.overallScore}%", style = MaterialTheme.typography.labelMedium, color = brandAccent)
+                        Text(
+                            "$label · SCORE ${sub.overallScore}%",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = statusColor,
+                        )
                         Spacer(Modifier.height(4.dp))
                         Text(sub.courseTitle, fontWeight = FontWeight.Bold, color = textPrimary)
                         sub.adminFeedback?.let {
@@ -1169,59 +1422,80 @@ private fun CertificatesTab(
     onEmailPdf: (CertificateRecord) -> Unit,
     onRequireAuth: () -> Unit,
 ) {
-    if (user == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Button(
-                onClick = onRequireAuth,
-                colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
-            ) { Text("Sign In to View Certificates") }
-        }
-        return
-    }
-    if (certificates.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                if (isConnected) "No certificates issued yet."
-                else "No cached certificates available offline yet.",
-                color = textSecondary,
-            )
-        }
-        return
-    }
+    Column(Modifier.fillMaxSize()) {
+        SectionHeaderBlock(
+            kicker = "EARNED CREDENTIALS",
+            title = "Certificates",
+            subtitle = "View official PDF credentials and export or share copies offline.",
+            accent = brandAccent,
+            textPrimary = textPrimary,
+            textSecondary = textSecondary,
+        )
 
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(vertical = 12.dp),
-    ) {
-        items(certificates, key = { it._id }) { cert ->
-            Card(
-                colors = CardDefaults.cardColors(containerColor = cardBg),
-                border = BorderStroke(1.dp, borderColor),
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("${cert.issuerName} · ${cert.certificateCode}", style = MaterialTheme.typography.labelMedium, color = brandAccent)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        cert.certificateTitle,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = textPrimary,
-                    )
-                    Text("${cert.courseTitle} · Score ${cert.score}%", style = MaterialTheme.typography.bodySmall, color = textSecondary)
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { onViewPdf(cert) },
-                            modifier = Modifier.weight(1f).height(46.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
-                        ) {
-                            Text("View PDF")
-                        }
-                        OutlinedButton(
-                            onClick = { onEmailPdf(cert) },
-                            modifier = Modifier.weight(1f).height(46.dp),
-                        ) {
-                            Text("Email PDF")
+        if (user == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Button(
+                    onClick = onRequireAuth,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
+                ) { Text("Sign In to View Certificates") }
+            }
+            return
+        }
+        if (certificates.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    if (isConnected) "No certificates issued yet."
+                    else "No cached certificates available offline yet.",
+                    color = textSecondary,
+                )
+            }
+            return
+        }
+
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(bottom = 16.dp),
+        ) {
+            items(certificates, key = { it._id }) { cert ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    border = BorderStroke(1.dp, borderColor),
+                    shape = RoundedCornerShape(18.dp),
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            "${cert.issuerName.uppercase()} · ${cert.certificateCode}",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = brandAccent,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            cert.certificateTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary,
+                        )
+                        Text("${cert.courseTitle} · Score ${cert.score}%", style = MaterialTheme.typography.bodySmall, color = textSecondary)
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { onViewPdf(cert) },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f).height(46.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
+                            ) {
+                                Text("View PDF")
+                            }
+                            OutlinedButton(
+                                onClick = { onEmailPdf(cert) },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f).height(46.dp),
+                            ) {
+                                Text("Email PDF")
+                            }
                         }
                     }
                 }
@@ -1238,6 +1512,7 @@ private fun CoursePlayerScreen(
     initialProgress: CourseProgressState,
     isConnected: Boolean,
     isDarkMode: Boolean,
+    onToggleDarkMode: () -> Unit,
     brandAccent: Color,
     user: UserAccount?,
     onProgressChange: (CourseProgressState) -> Unit,
@@ -1257,7 +1532,7 @@ private fun CoursePlayerScreen(
     val mod = pkg.course.modules.getOrNull(progress.currentModuleIndex)
     val textPrimary = MaterialTheme.colorScheme.onBackground
     val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
-    val cardBg = if (isDarkMode) Color(0xFF0F172A).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.96f)
+    val cardBg = if (isDarkMode) Color(0xFF0B1222).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.96f)
     val borderColor = MaterialTheme.colorScheme.outline
 
     LaunchedEffect(mod?.id, showSummary) {
@@ -1281,8 +1556,8 @@ private fun CoursePlayerScreen(
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (isDarkMode) Color(0xFF070B19).copy(alpha = 0.92f)
-                    else Color.White.copy(alpha = 0.92f),
+                    containerColor = if (isDarkMode) Color(0xFF060B18).copy(alpha = 0.94f)
+                    else Color.White.copy(alpha = 0.94f),
                     titleContentColor = textPrimary,
                 ),
                 navigationIcon = {
@@ -1291,11 +1566,31 @@ private fun CoursePlayerScreen(
                     }
                 },
                 title = {
-                    Text(
-                        if (showSummary) "Course Summary" else mod?.title ?: pkg.course.title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Column {
+                        Text(
+                            text = if (showSummary) "SUMMARY"
+                            else "MODULE ${progress.currentModuleIndex + 1} OF ${pkg.course.modules.size}",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = brandAccent,
+                        )
+                        Text(
+                            if (showSummary) "Course Summary" else mod?.title ?: pkg.course.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onToggleDarkMode) {
+                        Icon(
+                            imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
+                            contentDescription = "Toggle Dark Mode",
+                            tint = if (isDarkMode) Color(0xFFFBBF24) else textPrimary,
+                        )
+                    }
                 },
             )
         },
@@ -1365,6 +1660,7 @@ private fun CoursePlayerScreen(
                                     )
                                 )
                             },
+                            shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
                             modifier = Modifier.fillMaxWidth().height(48.dp),
                         ) { Text("Save to Pending Queue (Offline)") }
@@ -1380,6 +1676,7 @@ private fun CoursePlayerScreen(
                                         .onFailure { errorText = it.message }
                                 }
                             },
+                            shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
                             modifier = Modifier.fillMaxWidth().height(48.dp),
                         ) { Text("Submit Course to Admin") }
@@ -1454,6 +1751,7 @@ private fun CoursePlayerScreen(
                             onProgressChange(next)
                             if (isLast) showSummary = true
                         },
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                     ) { Text("Complete Lesson & Continue") }
@@ -1461,9 +1759,11 @@ private fun CoursePlayerScreen(
             } else {
                 item {
                     Text(
-                        "Passing Score: ${mod.passingScore ?: 70}%",
+                        "PASSING SCORE: ${mod.passingScore ?: 70}%",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
                         color = brandAccent,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
                 if (feedbackBanner != null) {
@@ -1519,6 +1819,7 @@ private fun CoursePlayerScreen(
                         Card(
                             colors = CardDefaults.cardColors(containerColor = cardBg),
                             border = BorderStroke(1.dp, borderColor),
+                            shape = RoundedCornerShape(16.dp),
                         ) {
                             Column(Modifier.padding(14.dp)) {
                                 Text(q.prompt, fontWeight = FontWeight.SemiBold, color = textPrimary)
@@ -1600,6 +1901,7 @@ private fun CoursePlayerScreen(
                                 )
                                 feedbackBanner = res.passed to (if (res.passed) "Quiz Passed (${res.score}%)" else "Scored ${res.score}% (below ${mod.passingScore ?: 70}%)")
                             },
+                            shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
                             modifier = Modifier.fillMaxWidth().height(48.dp),
                         ) { Text("Submit Quiz Answers") }
@@ -1640,6 +1942,7 @@ private fun OfflineVideoPlayer(uri: Uri) {
 private fun AuthDialog(
     api: ApiClient,
     isConnected: Boolean,
+    isDarkMode: Boolean,
     currentUser: UserAccount?,
     brandAccent: Color,
     onDismiss: () -> Unit,
@@ -1654,18 +1957,40 @@ private fun AuthDialog(
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    val dialogBg = if (isDarkMode) Color(0xFF0F172A) else Color.White
+
     if (currentUser != null) {
         AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text(currentUser.name, fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(currentUser.email, style = MaterialTheme.typography.bodyMedium)
+            containerColor = dialogBg,
+            shape = RoundedCornerShape(20.dp),
+            title = {
+                Column {
                     Text(
-                        "Credentials saved locally for offline access.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF10B981),
+                        "SIGNED IN ACCOUNT",
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = brandAccent,
                     )
+                    Text(currentUser.name, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(currentUser.email, style = MaterialTheme.typography.bodyMedium)
+                    Surface(
+                        color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.45f) else Color(0xFFECFDF5),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            "Credentials saved locally. Your session remains signed in offline and online until you tap Sign Out.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDarkMode) Color(0xFF6EE7B7) else Color(0xFF065F46),
+                            modifier = Modifier.padding(10.dp),
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -1683,18 +2008,34 @@ private fun AuthDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isRegister) "Create Learner Account" else "Sign In", fontWeight = FontWeight.Bold) },
+        containerColor = dialogBg,
+        shape = RoundedCornerShape(20.dp),
+        title = {
+            Column {
+                Text(
+                    "LEARNER AUTHENTICATION",
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = brandAccent,
+                )
+                Text(
+                    if (isRegister) "Create Learner Account" else "Sign In",
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!isConnected) {
                     Surface(
-                        color = Color(0xFFFEF3C7),
+                        color = if (isDarkMode) Color(0xFF451A03).copy(alpha = 0.72f) else Color(0xFFFEF3C7),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
-                            "An active server connection is required to sign in or register. Check your network or CONNECTION settings.",
-                            color = Color(0xFF92400E),
+                            "An active server connection is required to sign in or register. Connect Wi-Fi or verify CONNECTION settings.",
+                            color = if (isDarkMode) Color(0xFFFDE68A) else Color(0xFF92400E),
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(10.dp),
                         )

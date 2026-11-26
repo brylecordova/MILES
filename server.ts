@@ -27,8 +27,26 @@ import {
 } from './src/utils/certificateDefaults.ts';
 
 const PORT = 3000;
-const SESSION_SECRET =
-  process.env.SESSION_SECRET?.trim() || crypto.randomBytes(32).toString('hex');
+
+function resolveSessionSecret(): string {
+  const fromEnv = process.env.SESSION_SECRET?.trim();
+  if (fromEnv) return fromEnv;
+  const secretPath = path.resolve(process.cwd(), '.data', 'session_secret');
+  try {
+    if (fs.existsSync(secretPath)) {
+      const existing = fs.readFileSync(secretPath, 'utf-8').trim();
+      if (existing.length >= 32) return existing;
+    }
+    fs.mkdirSync(path.dirname(secretPath), { recursive: true });
+    const generated = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(secretPath, generated, { mode: 0o600 });
+    return generated;
+  } catch {
+    return crypto.randomBytes(32).toString('hex');
+  }
+}
+
+const SESSION_SECRET = resolveSessionSecret();
 
 const UPLOADS_DIR = path.resolve(process.cwd(), 'public', 'uploads');
 
@@ -61,9 +79,13 @@ interface TokenPayload {
 }
 
 function signToken(payload: Omit<TokenPayload, 'exp'>): string {
+  const ttlMs =
+    payload.role === 'learner'
+      ? 1000 * 60 * 60 * 24 * 365 * 10
+      : 1000 * 60 * 60 * 24 * 7;
   const full: TokenPayload = {
     ...payload,
-    exp: Date.now() + 1000 * 60 * 60 * 24 * 7,
+    exp: Date.now() + ttlMs,
   };
   const encoded = Buffer.from(JSON.stringify(full), 'utf-8').toString('base64url');
   const sig = crypto
