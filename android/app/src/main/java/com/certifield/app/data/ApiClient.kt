@@ -5,6 +5,7 @@ import com.certifield.app.model.Course
 import com.certifield.app.model.CourseSubmission
 import com.certifield.app.model.QuestionAttemptRecord
 import com.certifield.app.model.QuizAttemptSummary
+import com.certifield.app.model.SystemBranding
 import com.certifield.app.model.UserAccount
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,9 +16,13 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.TimeUnit
 
 @Serializable
 data class AuthResponse(val token: String, val user: UserAccount)
+
+@Serializable
+private data class BrandingResponse(val branding: SystemBranding)
 
 @Serializable
 private data class CoursesResponse(val courses: List<Course>)
@@ -47,13 +52,51 @@ private data class SubmitPayload(
 
 class ApiClient(private val baseUrlProvider: () -> String) {
     private val json = Json { ignoreUnknownKeys = true }
-    private val http = OkHttpClient()
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .build()
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
 
     @Volatile
     var token: String? = null
 
-    private fun url(path: String): String = "${baseUrlProvider().trimEnd('/')}$path"
+    private fun url(path: String): String = "${normalizeConnectionUrl(baseUrlProvider())}$path"
+
+    companion object {
+        fun normalizeConnectionUrl(raw: String): String {
+            val trimmed = raw.trim().trimEnd('/')
+            if (trimmed.isEmpty()) return ""
+            if (trimmed.startsWith("http://", ignoreCase = true) ||
+                trimmed.startsWith("https://", ignoreCase = true)
+            ) {
+                return trimmed
+            }
+            val isLocalOrIp = trimmed.startsWith("localhost", ignoreCase = true) ||
+                trimmed.startsWith("127.") ||
+                trimmed.startsWith("10.") ||
+                trimmed.startsWith("192.168.") ||
+                Regex("^172\\.(1[6-9]|2\\d|3[01])\\.").containsMatchIn(trimmed) ||
+                Regex("^\\d+\\.\\d+\\.\\d+\\.\\d+").containsMatchIn(trimmed)
+            return if (isLocalOrIp) "http://$trimmed" else "https://$trimmed"
+        }
+    }
+
+    suspend fun checkHealth(): Boolean = withContext(Dispatchers.IO) {
+        val base = normalizeConnectionUrl(baseUrlProvider())
+        if (base.isEmpty()) return@withContext false
+        runCatching {
+            val req = Request.Builder().url("$base/api/health").build()
+            http.newCall(req).execute().use { it.isSuccessful }
+        }.getOrDefault(false)
+    }
+
+    suspend fun fetchBranding(overrideBaseUrl: String? = null): SystemBranding = withContext(Dispatchers.IO) {
+        val base = normalizeConnectionUrl(overrideBaseUrl ?: baseUrlProvider())
+        val req = Request.Builder().url("$base/api/system/branding").build()
+        execute<BrandingResponse>(req).branding
+    }
 
     suspend fun register(name: String, email: String, password: String): AuthResponse =
         postJson("/api/auth/register", mapOf("name" to name, "email" to email, "password" to password))

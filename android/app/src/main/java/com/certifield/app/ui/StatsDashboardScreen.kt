@@ -250,6 +250,8 @@ fun StatsDashboardScreen(
     pendingSubmissions: List<PendingOfflineSubmission>,
     submittedCourses: List<CourseSubmission>,
     certificates: List<CertificateRecord>,
+    isDarkMode: Boolean = false,
+    brandAccent: Color = Color(0xFF1D4ED8),
 ) {
     val summary = remember(downloadedPackages, progressMap, pendingSubmissions, submittedCourses, certificates) {
         LearnerStatsCalculator.compute(
@@ -262,6 +264,17 @@ fun StatsDashboardScreen(
     }
     val earnedCount = summary.medals.count { it.earned }
 
+    val cardBg = if (isDarkMode) Color(0xFF0F172A).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.94f)
+    val subSurfaceBg = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF8FAFC)
+    val borderColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+    val textPrimary = if (isDarkMode) Color(0xFFF1F5F9) else Color(0xFF0F172A)
+    val textSecondary = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
+    val barTrackColor = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9)
+    val compBarColor = if (isDarkMode) Color(0xFF38BDF8) else Color(0xFF0F172A)
+    val emeraldAccent = if (isDarkMode) Color(0xFF34D399) else Color(0xFF15803D)
+    val amberAccent = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706)
+    val cyanAccent = if (isDarkMode) Color(0xFF38BDF8) else Color(0xFF0284C7)
+
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(vertical = 12.dp),
@@ -272,13 +285,13 @@ fun StatsDashboardScreen(
                     "Learner Statistics",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF0F172A),
+                    color = textPrimary,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     "Average performance metrics, reading time, score trends, and earned medals.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF475569),
+                    color = textSecondary,
                 )
             }
         }
@@ -291,14 +304,20 @@ fun StatsDashboardScreen(
                         label = "AVG QUIZ SCORE",
                         value = "${summary.avgScore}%",
                         hint = "${summary.completedCount} completed · ${summary.certifiedCount} certified",
-                        accent = Color(0xFF1D4ED8),
+                        accent = brandAccent,
+                        cardBg = cardBg,
+                        borderColor = borderColor,
+                        textSecondary = textSecondary,
                         modifier = Modifier.weight(1f),
                     )
                     StatKpiCard(
                         label = "AVG READING TIME",
                         value = LearnerStatsCalculator.formatDuration(summary.avgReadingSeconds),
                         hint = "Total ${LearnerStatsCalculator.formatDuration(summary.totalReadingSeconds)}",
-                        accent = Color(0xFF0F172A),
+                        accent = cyanAccent,
+                        cardBg = cardBg,
+                        borderColor = borderColor,
+                        textSecondary = textSecondary,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -307,14 +326,20 @@ fun StatsDashboardScreen(
                         label = "AVG QUIZ RETRIES",
                         value = "${summary.avgQuizRetries}x",
                         hint = if (summary.avgQuizRetries <= 1.3) "First-try mastery" else "Review highlights",
-                        accent = Color(0xFFD97706),
+                        accent = amberAccent,
+                        cardBg = cardBg,
+                        borderColor = borderColor,
+                        textSecondary = textSecondary,
                         modifier = Modifier.weight(1f),
                     )
                     StatKpiCard(
                         label = "LEARNING CAPACITY",
                         value = "${summary.capacityScore}/100",
                         hint = summary.capacityTier,
-                        accent = Color(0xFF15803D),
+                        accent = emeraldAccent,
+                        cardBg = cardBg,
+                        borderColor = borderColor,
+                        textSecondary = textSecondary,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -324,8 +349,8 @@ fun StatsDashboardScreen(
         // Score & Completion Canvas Chart
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                colors = CardDefaults.cardColors(containerColor = cardBg),
+                border = BorderStroke(1.dp, borderColor),
                 shape = RoundedCornerShape(16.dp),
             ) {
                 Column(Modifier.padding(16.dp)) {
@@ -335,15 +360,15 @@ fun StatsDashboardScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "Course Score & Progress Chart",
+                            "Course Score & Progress",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F172A),
+                            color = textPrimary,
                         )
                         Text(
-                            "Blue: Score · Slate: Progress",
+                            "Score · Progress",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF64748B),
+                            color = textSecondary,
                         )
                     }
                     Spacer(Modifier.height(12.dp))
@@ -351,10 +376,17 @@ fun StatsDashboardScreen(
                         Text(
                             "Download and start a course to populate your performance chart.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF64748B),
+                            color = textSecondary,
                         )
                     } else {
-                        CourseBarChart(rows = summary.courseRows.take(5))
+                        CourseBarChart(
+                            rows = summary.courseRows.take(5),
+                            textPrimary = textPrimary,
+                            textSecondary = textSecondary,
+                            trackColor = barTrackColor,
+                            scoreColor = brandAccent,
+                            compColor = compBarColor,
+                        )
                     }
                 }
             }
@@ -363,8 +395,8 @@ fun StatsDashboardScreen(
         // Medals Grid
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                colors = CardDefaults.cardColors(containerColor = cardBg),
+                border = BorderStroke(1.dp, borderColor),
                 shape = RoundedCornerShape(16.dp),
             ) {
                 Column(Modifier.padding(16.dp)) {
@@ -377,7 +409,7 @@ fun StatsDashboardScreen(
                             Icon(
                                 Icons.Default.EmojiEvents,
                                 contentDescription = null,
-                                tint = Color(0xFFD97706),
+                                tint = amberAccent,
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.width(6.dp))
@@ -385,14 +417,14 @@ fun StatsDashboardScreen(
                                 "Medals & Milestones",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0F172A),
+                                color = textPrimary,
                             )
                         }
                         Text(
                             "$earnedCount / ${summary.medals.size} unlocked",
                             style = MaterialTheme.typography.labelMedium,
                             fontFamily = FontFamily.Monospace,
-                            color = Color(0xFF1D4ED8),
+                            color = brandAccent,
                         )
                     }
                     Spacer(Modifier.height(12.dp))
@@ -403,7 +435,11 @@ fun StatsDashboardScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 pair.forEach { medal ->
-                                    MedalCard(medal = medal, modifier = Modifier.weight(1f))
+                                    MedalCard(
+                                        medal = medal,
+                                        isDarkMode = isDarkMode,
+                                        modifier = Modifier.weight(1f),
+                                    )
                                 }
                                 if (pair.size == 1) {
                                     Spacer(Modifier.weight(1f))
@@ -418,8 +454,8 @@ fun StatsDashboardScreen(
         // Course Performance Table
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                colors = CardDefaults.cardColors(containerColor = cardBg),
+                border = BorderStroke(1.dp, borderColor),
                 shape = RoundedCornerShape(16.dp),
             ) {
                 Column(Modifier.padding(16.dp)) {
@@ -427,59 +463,59 @@ fun StatsDashboardScreen(
                         "Course Breakdown Table",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0F172A),
+                        color = textPrimary,
                     )
                     Spacer(Modifier.height(10.dp))
                     if (summary.courseRows.isEmpty()) {
                         Text(
                             "No course records yet.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF64748B),
+                            color = textSecondary,
                         )
                     } else {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(10.dp))
+                                .border(1.dp, borderColor, RoundedCornerShape(10.dp))
                                 .clip(RoundedCornerShape(10.dp)),
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(Color(0xFFF8FAFC))
+                                    .background(subSurfaceBg)
                                     .padding(horizontal = 10.dp, vertical = 8.dp),
                             ) {
                                 Text(
                                     "Course",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF475569),
+                                    color = textSecondary,
                                     modifier = Modifier.weight(2.2f),
                                 )
                                 Text(
                                     "Read",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF475569),
+                                    color = textSecondary,
                                     modifier = Modifier.weight(1f),
                                 )
                                 Text(
                                     "Tries",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF475569),
+                                    color = textSecondary,
                                     modifier = Modifier.weight(0.9f),
                                 )
                                 Text(
                                     "Score",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF475569),
+                                    color = textSecondary,
                                     modifier = Modifier.weight(0.9f),
                                 )
                             }
                             summary.courseRows.forEach { row ->
-                                HorizontalDivider(color = Color(0xFFE2E8F0))
+                                HorizontalDivider(color = borderColor)
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
@@ -493,26 +529,26 @@ fun StatsDashboardScreen(
                                             fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
-                                            color = Color(0xFF0F172A),
+                                            color = textPrimary,
                                         )
                                         Text(
                                             row.statusLabel,
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFF64748B),
+                                            color = textSecondary,
                                         )
                                     }
                                     Text(
                                         LearnerStatsCalculator.formatDuration(row.readingSeconds),
                                         style = MaterialTheme.typography.labelMedium,
                                         fontFamily = FontFamily.Monospace,
-                                        color = Color(0xFF334155),
+                                        color = textPrimary,
                                         modifier = Modifier.weight(1f),
                                     )
                                     Text(
                                         if (row.avgQuizRetries > 0) "${row.avgQuizRetries}x" else "-",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontFamily = FontFamily.Monospace,
-                                        color = Color(0xFF334155),
+                                        color = textPrimary,
                                         modifier = Modifier.weight(0.9f),
                                     )
                                     Text(
@@ -520,7 +556,7 @@ fun StatsDashboardScreen(
                                         style = MaterialTheme.typography.labelMedium,
                                         fontFamily = FontFamily.Monospace,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1D4ED8),
+                                        color = brandAccent,
                                         modifier = Modifier.weight(0.9f),
                                     )
                                 }
@@ -539,12 +575,15 @@ private fun StatKpiCard(
     value: String,
     hint: String,
     accent: Color,
+    cardBg: Color,
+    borderColor: Color,
+    textSecondary: Color,
     modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
+        border = BorderStroke(1.dp, borderColor),
         shape = RoundedCornerShape(14.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -552,7 +591,9 @@ private fun StatKpiCard(
                 label,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF64748B),
+                color = textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -566,7 +607,7 @@ private fun StatKpiCard(
             Text(
                 hint,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFF475569),
+                color = textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -575,7 +616,14 @@ private fun StatKpiCard(
 }
 
 @Composable
-private fun CourseBarChart(rows: List<CourseStatRow>) {
+private fun CourseBarChart(
+    rows: List<CourseStatRow>,
+    textPrimary: Color,
+    textSecondary: Color,
+    trackColor: Color,
+    scoreColor: Color,
+    compColor: Color,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         rows.forEach { row ->
             Column {
@@ -587,16 +635,16 @@ private fun CourseBarChart(rows: List<CourseStatRow>) {
                         row.courseTitle,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF0F172A),
+                        color = textPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(end = 8.dp),
                     )
                     Text(
-                        "${row.score}% score · ${row.completionPct}% done",
+                        "${row.score}% · ${row.completionPct}% done",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
-                        color = Color(0xFF475569),
+                        color = textSecondary,
                     )
                 }
                 Spacer(Modifier.height(4.dp))
@@ -606,32 +654,29 @@ private fun CourseBarChart(rows: List<CourseStatRow>) {
                         .height(14.dp),
                 ) {
                     val barHeight = size.height / 2f - 1.dp.toPx()
-                    // Track
                     drawRoundRect(
-                        color = Color(0xFFF1F5F9),
+                        color = trackColor,
                         topLeft = Offset.Zero,
                         size = Size(size.width, barHeight),
                         cornerRadius = CornerRadius(4f, 4f),
                     )
-                    // Score bar
                     val scoreWidth = (size.width * (row.score.coerceIn(0, 100) / 100f))
                     drawRoundRect(
-                        color = Color(0xFF1D4ED8),
+                        color = scoreColor,
                         topLeft = Offset.Zero,
                         size = Size(scoreWidth, barHeight),
                         cornerRadius = CornerRadius(4f, 4f),
                     )
-                    // Completion track
                     val secondTop = barHeight + 2.dp.toPx()
                     drawRoundRect(
-                        color = Color(0xFFF1F5F9),
+                        color = trackColor,
                         topLeft = Offset(0f, secondTop),
                         size = Size(size.width, barHeight),
                         cornerRadius = CornerRadius(4f, 4f),
                     )
                     val compWidth = (size.width * (row.completionPct.coerceIn(0, 100) / 100f))
                     drawRoundRect(
-                        color = Color(0xFF0F172A),
+                        color = compColor,
                         topLeft = Offset(0f, secondTop),
                         size = Size(compWidth, barHeight),
                         cornerRadius = CornerRadius(4f, 4f),
@@ -645,16 +690,31 @@ private fun CourseBarChart(rows: List<CourseStatRow>) {
 @Composable
 private fun MedalCard(
     medal: LearnerMedal,
+    isDarkMode: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val tierColor = when {
-        !medal.earned -> Color(0xFF94A3B8)
-        medal.tier == "gold" -> Color(0xFFD97706)
-        medal.tier == "silver" -> Color(0xFF475569)
-        else -> Color(0xFFB45309)
+        !medal.earned -> if (isDarkMode) Color(0xFF64748B) else Color(0xFF94A3B8)
+        medal.tier == "gold" -> if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706)
+        medal.tier == "silver" -> if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
+        else -> if (isDarkMode) Color(0xFFFB923C) else Color(0xFFB45309)
     }
-    val bgColor = if (medal.earned) Color(0xFFFFFBEB) else Color(0xFFF8FAFC)
-    val borderColor = if (medal.earned) Color(0xFFFDE68A) else Color(0xFFE2E8F0)
+    val bgColor = if (medal.earned) {
+        if (isDarkMode) Color(0xFF451A03).copy(alpha = 0.45f) else Color(0xFFFFFBEB)
+    } else {
+        if (isDarkMode) Color(0xFF1E293B).copy(alpha = 0.6f) else Color(0xFFF8FAFC)
+    }
+    val borderColor = if (medal.earned) {
+        if (isDarkMode) Color(0xFFB45309).copy(alpha = 0.55f) else Color(0xFFFDE68A)
+    } else {
+        if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+    }
+    val titleColor = if (medal.earned) {
+        if (isDarkMode) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    } else {
+        if (isDarkMode) Color(0xFF64748B) else Color(0xFF64748B)
+    }
+    val descColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
 
     Surface(
         modifier = modifier,
@@ -669,7 +729,10 @@ private fun MedalCard(
                     modifier = Modifier
                         .size(26.dp)
                         .clip(CircleShape)
-                        .background(if (medal.earned) tierColor.copy(alpha = 0.16f) else Color(0xFFE2E8F0)),
+                        .background(
+                            if (medal.earned) tierColor.copy(alpha = 0.18f)
+                            else if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+                        ),
                 ) {
                     Icon(
                         if (medal.earned) Icons.Default.WorkspacePremium else Icons.Default.Lock,
@@ -684,7 +747,7 @@ private fun MedalCard(
                         medal.title,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = if (medal.earned) Color(0xFF0F172A) else Color(0xFF64748B),
+                        color = titleColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -700,7 +763,7 @@ private fun MedalCard(
             Text(
                 medal.description,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFF475569),
+                color = descColor,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )

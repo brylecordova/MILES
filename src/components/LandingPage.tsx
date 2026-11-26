@@ -6,7 +6,9 @@ import {
   ExternalLink,
   Film,
   Layers,
+  Moon,
   Smartphone,
+  Sun,
 } from 'lucide-react';
 import type { Course, SystemBranding } from '../types/training';
 import { downloadUploadedApk } from '../utils/api';
@@ -20,6 +22,8 @@ interface LandingPageProps {
   branding: SystemBranding;
   courses: Course[];
   loadingCourses: boolean;
+  isDark: boolean;
+  onToggleTheme: () => void;
   onOpenInstall: () => void;
 }
 
@@ -90,6 +94,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   branding,
   courses,
   loadingCourses,
+  isDark,
+  onToggleTheme,
   onOpenInstall,
 }) => {
   const [downloadingApk, setDownloadingApk] = useState(false);
@@ -135,10 +141,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   ): React.ReactNode {
     const className =
       variant === 'header'
-        ? 'flex min-h-[40px] items-center gap-2 whitespace-nowrap rounded-xl px-4 text-xs font-semibold text-white transition-opacity hover:opacity-90 sm:text-sm'
+        ? 'flex min-h-[40px] shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90 sm:text-sm'
         : variant === 'catalog'
-        ? 'inline-flex min-h-[40px] items-center gap-2 self-start whitespace-nowrap rounded-xl border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-800 hover:bg-slate-100'
-        : 'inline-flex min-h-[48px] items-center gap-2 whitespace-nowrap rounded-xl px-6 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60';
+        ? 'inline-flex min-h-[40px] shrink-0 items-center gap-2 self-start whitespace-nowrap rounded-xl border border-slate-300/90 bg-white/85 px-4 text-xs font-semibold text-slate-800 backdrop-blur-md transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100 dark:hover:bg-slate-800'
+        : 'inline-flex min-h-[48px] shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-6 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60';
 
     const style = variant === 'catalog' ? undefined : { backgroundColor: accent };
     const icon = isPlayStoreActive ? (
@@ -229,10 +235,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      {/* Strict 3-Zone Top Navigation Bar (No learner workspace tabs, no web sign-in, no admin link) */}
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-8 px-4 sm:px-6">
+    <div className="min-h-screen text-slate-900 dark:text-slate-100">
+      {/* Strict 3-Zone Top Navigation Bar */}
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/80 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/80">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-6 px-4 sm:px-6">
           {/* Zone 1: Dynamic System Icon + Name */}
           <a
             href="#top"
@@ -245,7 +251,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               referrerPolicy="no-referrer"
               className="h-8 w-8 rounded-lg object-contain"
             />
-            <span className="font-display text-lg font-extrabold tracking-tight text-slate-900">
+            <span className="font-display text-lg font-extrabold tracking-tight text-slate-900 dark:text-white">
               {branding.systemName}
             </span>
           </a>
@@ -255,53 +261,64 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <a
               href="#capabilities"
               onClick={(e) => handleSmoothAnchor(e, 'capabilities')}
-              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:underline hover:underline-offset-4"
+              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:underline hover:underline-offset-4 dark:text-slate-300 dark:hover:text-white"
             >
               Capabilities
             </a>
             <a
               href="#courses"
               onClick={(e) => handleSmoothAnchor(e, 'courses')}
-              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:underline hover:underline-offset-4"
+              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:underline hover:underline-offset-4 dark:text-slate-300 dark:hover:text-white"
             >
               Course Catalog
             </a>
             <a
               href="#certificates"
               onClick={(e) => handleSmoothAnchor(e, 'certificates')}
-              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:underline hover:underline-offset-4"
+              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:underline hover:underline-offset-4 dark:text-slate-300 dark:hover:text-white"
             >
               Certificates
             </a>
             <a
               href="#get-app"
               onClick={(e) => handleSmoothAnchor(e, 'get-app')}
-              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:underline hover:underline-offset-4"
+              className="whitespace-nowrap text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:underline hover:underline-offset-4 dark:text-slate-300 dark:hover:text-white"
             >
               Android App
             </a>
           </nav>
 
-          {/* Zone 3: Single Primary CTA */}
-          <div className="shrink-0">{renderDownloadAppAction('header')}</div>
+          {/* Zone 3: Dark Mode Toggle + Primary CTA */}
+          <div className="flex shrink-0 items-center gap-2.5">
+            <button
+              type="button"
+              data-testid="theme-toggle"
+              onClick={onToggleTheme}
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-white/80 text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700/80 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {isDark ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}
+            </button>
+            {renderDownloadAppAction('header')}
+          </div>
         </div>
       </header>
 
       <main id="top">
-        {/* Hero Section (Immediately visible on initial paint) */}
+        {/* Hero Section */}
         <section className="mx-auto max-w-7xl px-4 pt-12 pb-16 sm:px-6 lg:pt-16 lg:pb-24">
-          <div className="grid items-stretch gap-10 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
             <div className="flex max-w-xl flex-col justify-center">
               <p
-                className="text-xs font-bold tracking-wider uppercase"
-                style={{ color: accent }}
+                className="font-mono-tabular text-xs font-bold tracking-widest uppercase"
+                style={{ color: isDark ? '#38bdf8' : accent }}
               >
                 Android Field Certification Platform
               </p>
-              <h1 className="font-display mt-3 text-4xl font-extrabold tracking-tight text-slate-900 text-balance sm:text-5xl">
+              <h1 className="font-display mt-3 text-4xl font-extrabold tracking-tight text-slate-900 text-balance dark:text-white sm:text-5xl">
                 Offline mobile training that ends in verifiable PDF certificates.
               </h1>
-              <p className="mt-4 text-base leading-relaxed text-slate-600 sm:text-lg">
+              <p className="mt-4 text-base leading-relaxed text-slate-600 dark:text-slate-300 sm:text-lg">
                 {branding.tagline} Learners sign in directly inside the Android app, download full
                 video courses for offline field study, complete multi-format assessments, and earn
                 official PDF credentials.
@@ -312,22 +329,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <a
                   href="#courses"
                   onClick={(e) => handleSmoothAnchor(e, 'courses')}
-                  className="flex min-h-[48px] items-center whitespace-nowrap rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100"
+                  className="flex min-h-[48px] items-center whitespace-nowrap rounded-xl border border-slate-300/90 bg-white/85 px-5 text-sm font-semibold text-slate-800 backdrop-blur-md transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100 dark:hover:bg-slate-800"
                 >
                   Preview Available Courses
                 </a>
               </div>
 
               {downloadError && (
-                <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs text-red-700">
+                <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300">
                   {downloadError}
                 </p>
               )}
 
-              <div className="mt-7 flex flex-wrap items-center gap-x-2.5 gap-y-2 text-xs font-medium text-slate-500">
+              <div className="mt-7 flex flex-wrap items-center gap-x-2.5 gap-y-2 text-xs font-medium text-slate-500 dark:text-slate-400">
                 <span>Offline MP4 video playback</span>
                 <span aria-hidden="true">·</span>
-                <span>Account sign-in inside Android app</span>
+                <span>Offline saved credentials</span>
                 <span aria-hidden="true">·</span>
                 <span>
                   {isPlayStoreActive
@@ -339,25 +356,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <img
-                src="/src/assets/images/hero_mobile_certification_1795696801213.jpg"
-                alt={`${branding.systemName} mobile certification in action`}
-                referrerPolicy="no-referrer"
-                className="aspect-video h-full w-full object-cover"
-              />
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/80 p-1.5 shadow-lg backdrop-blur-md dark:border-slate-800/90 dark:bg-slate-900/75 dark:shadow-cyan-950/30">
+              <div className="overflow-hidden rounded-xl">
+                <img
+                  src="/src/assets/images/hero_mobile_certification_1795696801213.jpg"
+                  alt={`${branding.systemName} mobile certification in action`}
+                  referrerPolicy="no-referrer"
+                  className="block aspect-video w-full object-cover"
+                />
+              </div>
             </div>
           </div>
         </section>
 
         {/* Capabilities Bento */}
-        <RevealSection id="capabilities" className="border-y border-slate-200 bg-white py-16 lg:py-20">
+        <RevealSection
+          id="capabilities"
+          className="border-y border-slate-200/80 bg-white/70 py-16 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/55 lg:py-20"
+        >
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <div className="max-w-2xl">
-              <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+              <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
                 Built for field teams without reliable Wi-Fi.
               </h2>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">
+              <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300 sm:text-base">
                 Every course module, embedded training video, illustration, and quiz checkpoint stays
                 stored locally inside the Android application until the learner finishes and syncs.
               </p>
@@ -392,17 +414,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               ].map((item) => (
                 <article
                   key={item.num}
-                  className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50/70 p-6 transition-transform duration-200 hover:-translate-y-0.5"
+                  className="flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white/80 p-6 backdrop-blur-md transition-transform duration-200 hover:-translate-y-0.5 dark:border-slate-800/80 dark:bg-slate-950/70"
                 >
                   <div>
                     <div className="flex items-center justify-between">
-                      <span className="font-mono-tabular text-xs font-bold text-slate-400">
+                      <span className="font-mono-tabular text-xs font-bold text-slate-400 dark:text-slate-500">
                         {item.num}
                       </span>
-                      <span style={{ color: accent }}>{item.icon}</span>
+                      <span style={{ color: isDark ? '#38bdf8' : accent }}>{item.icon}</span>
                     </div>
-                    <h3 className="mt-4 text-base font-bold text-slate-900">{item.title}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-slate-600">{item.body}</p>
+                    <h3 className="mt-4 text-base font-bold text-slate-900 dark:text-white">
+                      {item.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                      {item.body}
+                    </p>
                   </div>
                 </article>
               ))}
@@ -414,10 +440,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <RevealSection id="courses" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-20">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
-              <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+              <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
                 Published Training Catalog
               </h2>
-              <p className="mt-1.5 text-sm text-slate-600">
+              <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">
                 Preview available certification programs below. Sign in inside the{' '}
                 {branding.systemName} Android app to download courses and earn credentials.
               </p>
@@ -430,12 +456,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               {[1, 2, 3].map((n) => (
                 <div
                   key={n}
-                  className="h-80 animate-pulse rounded-2xl border border-slate-200 bg-white"
+                  className="h-80 animate-pulse rounded-2xl border border-slate-200 bg-white/75 dark:border-slate-800 dark:bg-slate-900/60"
                 />
               ))}
             </div>
           ) : courses.length === 0 ? (
-            <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+            <div className="mt-8 rounded-2xl border border-slate-200/80 bg-white/80 p-10 text-center text-sm text-slate-500 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/75 dark:text-slate-400">
               Courses are being prepared for mobile distribution.
             </div>
           ) : (
@@ -446,16 +472,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 return (
                   <article
                     key={course._id}
-                    className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition-transform duration-200 hover:-translate-y-0.5"
+                    className="flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 backdrop-blur-md transition-transform duration-200 hover:-translate-y-0.5 dark:border-slate-800/80 dark:bg-slate-900/75"
                   >
                     <CourseBannerImage
                       url={course.bannerUrl}
                       title={course.title}
-                      className="aspect-video w-full border-b border-slate-100"
+                      className="aspect-video w-full border-b border-slate-100 dark:border-slate-800"
                     />
                     <div className="flex flex-1 flex-col p-5">
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <span className="font-semibold" style={{ color: accent }}>
+                      <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-semibold" style={{ color: isDark ? '#38bdf8' : accent }}>
                           {course.category}
                         </span>
                         <span aria-hidden="true">·</span>
@@ -464,15 +490,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                           {quizCount === 1 ? 'quiz' : 'quizzes'}
                         </span>
                       </div>
-                      <h3 className="mt-2 text-lg font-bold text-slate-900">{course.title}</h3>
-                      <p className="mt-1.5 line-clamp-3 flex-1 text-sm leading-relaxed text-slate-600">
+                      <h3 className="mt-2 text-lg font-bold text-slate-900 dark:text-white">
+                        {course.title}
+                      </h3>
+                      <p className="mt-1.5 line-clamp-3 flex-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
                         {course.description}
                       </p>
-                      <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
-                        <span className="min-w-0 truncate font-medium text-slate-700">
+                      <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                        <span className="min-w-0 truncate font-medium text-slate-700 dark:text-slate-200">
                           Credential: {course.certificateTitle}
                         </span>
-                        <span className="shrink-0 font-semibold text-slate-900">Android App</span>
+                        <span className="shrink-0 font-semibold text-slate-900 dark:text-sky-400">
+                          Android App
+                        </span>
                       </div>
                     </div>
                   </article>
@@ -483,35 +513,47 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </RevealSection>
 
         {/* Certificate Showcase */}
-        <RevealSection id="certificates" className="border-y border-slate-200 bg-white py-16 lg:py-20">
+        <RevealSection
+          id="certificates"
+          className="border-y border-slate-200/80 bg-white/70 py-16 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/55 lg:py-20"
+        >
           <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr]">
             <div>
-              <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+              <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
                 Custom-designed PDF certificates per course.
               </h2>
-              <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
+              <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300 sm:text-base">
                 Every course issues a tailored A4 landscape PDF certificate bearing your system seal,
                 learner full name, assessment score, issue date, and unique verification ID. Learners
                 can preview and email PDFs straight from their Android device.
               </p>
-              <ul className="mt-5 space-y-2.5 text-sm text-slate-700">
+              <ul className="mt-5 space-y-2.5 text-sm text-slate-700 dark:text-slate-200">
                 <li className="flex items-center gap-2.5">
-                  <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: accent }} />
+                  <CheckCircle2
+                    className="h-4 w-4 shrink-0"
+                    style={{ color: isDark ? '#38bdf8' : accent }}
+                  />
                   <span>Unique verification ID stamped on every approved submission</span>
                 </li>
                 <li className="flex items-center gap-2.5">
-                  <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: accent }} />
+                  <CheckCircle2
+                    className="h-4 w-4 shrink-0"
+                    style={{ color: isDark ? '#38bdf8' : accent }}
+                  />
                   <span>Generated natively as PDF inside the Android app</span>
                 </li>
                 <li className="flex items-center gap-2.5">
-                  <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: accent }} />
+                  <CheckCircle2
+                    className="h-4 w-4 shrink-0"
+                    style={{ color: isDark ? '#38bdf8' : accent }}
+                  />
                   <span>One-tap email delivery to your personal or supervisor inbox</span>
                 </li>
               </ul>
             </div>
 
             <div
-              className="relative aspect-[842/595] w-full overflow-hidden rounded-2xl border border-slate-200 shadow-sm"
+              className="relative aspect-[842/595] w-full overflow-hidden rounded-2xl border border-slate-200 shadow-lg dark:border-slate-700"
               style={{ backgroundColor: sampleDesign.canvasBackground || '#ffffff' }}
             >
               {sampleDesign.backgroundImageUrl && (
@@ -583,10 +625,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         {/* Download the Android App Banner */}
         <RevealSection id="get-app" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-20">
-          <div className="rounded-3xl border border-slate-200 bg-slate-900 p-8 text-white sm:p-12">
+          <div className="rounded-3xl border border-slate-200/80 bg-slate-900/95 p-8 text-white shadow-xl backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/85 sm:p-12">
             <div className="grid items-center gap-8 lg:grid-cols-[1.2fr_0.8fr]">
               <div>
-                <p className="text-xs font-bold tracking-wider text-blue-300 uppercase">
+                <p className="font-mono-tabular text-xs font-bold tracking-widest text-sky-300 uppercase">
                   {isPlayStoreActive ? 'Google Play Distribution' : 'Android Mobile Application'}
                 </p>
                 <h2 className="font-display mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
@@ -612,19 +654,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 )}
               </div>
 
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 space-y-3 text-xs text-slate-300">
+              <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/75 p-6 text-xs text-slate-300">
                 <p className="font-semibold text-white">Inside the Android App</p>
                 <ul className="space-y-2.5">
                   <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-blue-300" />
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
                     <span>Dedicated learner registration, sign-in, and personal stats dashboard</span>
                   </li>
                   <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-blue-300" />
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
                     <span>Offline MP4 video playback inside the app via Media3 ExoPlayer</span>
                   </li>
                   <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-blue-300" />
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
                     <span>Queued quiz sync, achievement medals, and native PDF certificate export</span>
                   </li>
                 </ul>
@@ -635,7 +677,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </main>
 
       {/* Quiet Footer (Strictly zero admin links) */}
-      <footer className="border-t border-slate-200 bg-white py-10">
+      <footer className="border-t border-slate-200/80 bg-white/80 py-10 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-950/80">
         <div className="mx-auto flex max-w-7xl flex-col justify-between gap-6 px-4 sm:flex-row sm:items-center sm:px-6">
           <div className="flex items-center gap-2.5">
             <img
@@ -645,37 +687,39 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               className="h-6 w-6 rounded object-contain"
             />
             <div>
-              <p className="text-sm font-bold text-slate-900">{branding.systemName}</p>
-              <p className="text-xs text-slate-500">{branding.tagline}</p>
+              <p className="text-sm font-bold text-slate-900 dark:text-white">
+                {branding.systemName}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{branding.tagline}</p>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-6 text-xs font-medium text-slate-500">
+          <div className="flex flex-wrap gap-6 text-xs font-medium text-slate-500 dark:text-slate-400">
             <a
               href="#capabilities"
               onClick={(e) => handleSmoothAnchor(e, 'capabilities')}
-              className="hover:text-slate-900"
+              className="hover:text-slate-900 dark:hover:text-white"
             >
               Capabilities
             </a>
             <a
               href="#courses"
               onClick={(e) => handleSmoothAnchor(e, 'courses')}
-              className="hover:text-slate-900"
+              className="hover:text-slate-900 dark:hover:text-white"
             >
               Courses
             </a>
             <a
               href="#certificates"
               onClick={(e) => handleSmoothAnchor(e, 'certificates')}
-              className="hover:text-slate-900"
+              className="hover:text-slate-900 dark:hover:text-white"
             >
               Certificates
             </a>
             <a
               href="#get-app"
               onClick={(e) => handleSmoothAnchor(e, 'get-app')}
-              className="hover:text-slate-900"
+              className="hover:text-slate-900 dark:hover:text-white"
             >
               Android App
             </a>

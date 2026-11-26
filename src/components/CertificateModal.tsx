@@ -73,21 +73,21 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-xs sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-xs sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="cert-modal-title"
     >
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-slate-200 bg-white p-6 shadow-2xl sm:rounded-2xl">
+      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-slate-200 bg-white/95 p-6 shadow-2xl backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/95 sm:rounded-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 id="cert-modal-title" className="text-lg font-bold text-slate-900">
+          <h2 id="cert-modal-title" className="text-lg font-bold text-slate-900 dark:text-white">
             Official Training Certificate
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close certificate preview"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
@@ -95,7 +95,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
 
         {/* Dynamic Certificate Frame */}
         <div
-          className="relative aspect-[842/595] w-full overflow-hidden rounded-xl border border-slate-200 shadow-xs"
+          className="relative aspect-[842/595] w-full overflow-hidden rounded-xl border border-slate-200 shadow-xs dark:border-slate-700"
           style={{ backgroundColor: design.canvasBackground || '#ffffff' }}
         >
           {design.backgroundImageUrl && (
@@ -170,7 +170,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
           <button
             type="button"
             onClick={() => downloadCertificatePdf(certificate)}
-            className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white transition-colors hover:bg-blue-800"
+            className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white transition-colors hover:bg-blue-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
           >
             <Download className="h-4 w-4" />
             <span>Download PDF Certificate</span>
@@ -180,11 +180,11 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
         {/* Email Certificate Form */}
         <form
           onSubmit={handleEmailSubmit}
-          className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4"
+          className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60"
         >
           <label
             htmlFor="cert-email-input"
-            className="mb-2 block text-sm font-semibold text-slate-900"
+            className="mb-2 block text-sm font-semibold text-slate-900 dark:text-white"
           >
             Email PDF Certificate to Yourself
           </label>
@@ -196,12 +196,12 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
               value={recipientEmail}
               onChange={(e) => setRecipientEmail(e.target.value)}
               placeholder="you@example.com"
-              className="min-h-[44px] flex-1 rounded-xl border border-slate-300 bg-white px-3.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none"
+              className="min-h-[44px] flex-1 rounded-xl border border-slate-300 bg-white px-3.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
             <button
               type="submit"
               disabled={sending}
-              className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 hover:bg-slate-100 disabled:opacity-60"
+              className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
             >
               <Mail className="h-4 w-4" />
               <span>{sending ? 'Sending...' : 'Send Email'}</span>
@@ -212,10 +212,10 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
             <div
               className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
                 emailStatus.type === 'success'
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-300'
                   : emailStatus.type === 'error'
-                  ? 'border-red-200 bg-red-50 text-red-800'
-                  : 'border-blue-200 bg-blue-50 text-blue-800'
+                  ? 'border-red-200 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300'
+                  : 'border-blue-200 bg-blue-50 text-blue-800 dark:border-sky-900/60 dark:bg-sky-950/50 dark:text-sky-300'
               }`}
             >
               <div className="flex items-start gap-2">

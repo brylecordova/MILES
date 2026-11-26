@@ -87,7 +87,6 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
     xPct = Math.max(4, Math.min(96, xPct));
     yPct = Math.max(5, Math.min(95, yPct));
 
-    // Snap horizontally to center guide when within 1.8%
     if (Math.abs(xPct - 50) <= 1.8) {
       xPct = 50;
       setSnappedCenter(true);
@@ -152,13 +151,13 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
   }
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 space-y-5">
+    <section className="space-y-5 rounded-2xl border border-slate-200/80 bg-white/85 p-6 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/75">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">
             Drag-and-Drop Certificate Designer
           </h2>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-slate-600 dark:text-slate-300">
             Drag the learner name, credential title, verification ID, or seal directly onto the A4 certificate canvas.
           </p>
         </div>
@@ -166,7 +165,7 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
           <button
             type="button"
             onClick={addCustomTextElement}
-            className="flex min-h-[38px] items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+            className="flex min-h-[38px] items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>Add Text</span>
@@ -174,7 +173,7 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
           <button
             type="button"
             onClick={resetToDefault}
-            className="flex min-h-[38px] items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            className="flex min-h-[38px] items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <RotateCcw className="h-3.5 w-3.5" />
             <span>Reset Layout</span>
@@ -189,7 +188,7 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
           <div
             ref={canvasRef}
             data-testid="certificate-designer-canvas"
-            className="relative aspect-[842/595] w-full overflow-hidden rounded-xl border border-slate-300 shadow-sm select-none"
+            className="relative aspect-[842/595] w-full overflow-hidden rounded-xl border border-slate-300 shadow-sm select-none dark:border-slate-700"
             style={{
               backgroundColor: design.canvasBackground || '#ffffff',
             }}
@@ -215,7 +214,6 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
               </>
             )}
 
-            {/* Vertical center alignment guide while dragging */}
             {snappedCenter && (
               <div className="pointer-events-none absolute top-0 bottom-0 left-1/2 w-px bg-blue-500/70" />
             )}
@@ -281,11 +279,14 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                 );
               })}
           </div>
-          <p className="flex items-center gap-1.5 text-xs text-slate-500">
+          <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
             <Move className="h-3.5 w-3.5" />
             <span>
               Click and drag any field above. Dynamic tags like{' '}
-              <code className="font-mono-tabular text-slate-800">{'{{learner_name}}'}</code> populate automatically when issued.
+              <code className="font-mono-tabular text-slate-800 dark:text-slate-200">
+                {'{{learner_name}}'}
+              </code>{' '}
+              populate automatically when issued.
             </span>
           </p>
         </div>
@@ -293,42 +294,42 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
         {/* Properties & Element Inspector */}
         <div className="space-y-4">
           {/* Canvas Styling */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-3">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 dark:border-slate-800 dark:bg-slate-950/60">
+            <h3 className="text-xs font-bold tracking-wide text-slate-800 uppercase dark:text-slate-200">
               Canvas &amp; Border
             </h3>
             <div className="grid grid-cols-3 gap-2">
-              <label className="text-[11px] font-medium text-slate-600">
+              <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
                 Paper
                 <input
                   type="color"
                   value={design.canvasBackground}
                   onChange={(e) => onChange({ ...design, canvasBackground: e.target.value })}
-                  className="mt-1 h-8 w-full cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+                  className="mt-1 h-8 w-full cursor-pointer rounded border border-slate-300 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900"
                 />
               </label>
-              <label className="text-[11px] font-medium text-slate-600">
+              <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
                 Border
                 <input
                   type="color"
                   value={design.borderColor}
                   onChange={(e) => onChange({ ...design, borderColor: e.target.value })}
-                  className="mt-1 h-8 w-full cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+                  className="mt-1 h-8 w-full cursor-pointer rounded border border-slate-300 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900"
                 />
               </label>
-              <label className="text-[11px] font-medium text-slate-600">
+              <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
                 Accent
                 <input
                   type="color"
                   value={design.accentColor}
                   onChange={(e) => onChange({ ...design, accentColor: e.target.value })}
-                  className="mt-1 h-8 w-full cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+                  className="mt-1 h-8 w-full cursor-pointer rounded border border-slate-300 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900"
                 />
               </label>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200">
                 <input
                   type="checkbox"
                   checked={design.showBorder}
@@ -338,7 +339,7 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                 <span>Show double border frame</span>
               </label>
 
-              <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
                 <Upload className="h-3.5 w-3.5" />
                 <span>{uploadingBg ? 'Uploading...' : 'Backdrop Image'}</span>
                 <input
@@ -357,12 +358,12 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
               </label>
             </div>
             {design.backgroundImageUrl && (
-              <div className="flex items-center justify-between text-xs text-slate-600">
+              <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
                 <span className="truncate">Background image attached</span>
                 <button
                   type="button"
                   onClick={() => onChange({ ...design, backgroundImageUrl: undefined })}
-                  className="font-semibold text-red-700 hover:underline"
+                  className="font-semibold text-red-700 hover:underline dark:text-red-400"
                 >
                   Remove
                 </button>
@@ -371,8 +372,8 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
           </div>
 
           {/* Element Layer List */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-2">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3.5 dark:border-slate-800 dark:bg-slate-950/60">
+            <h3 className="text-xs font-bold tracking-wide text-slate-800 uppercase dark:text-slate-200">
               Certificate Fields
             </h3>
             <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
@@ -381,8 +382,8 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                   key={el.id}
                   className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs ${
                     el.id === selectedId
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-white text-slate-700 border border-slate-200'
+                      ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
+                      : 'border border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200'
                   }`}
                 >
                   <button
@@ -423,12 +424,12 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
 
           {/* Selected Element Editor */}
           {selectedElement && (
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-3">
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-950/70">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-900">
+                <span className="text-xs font-bold text-slate-900 dark:text-white">
                   Edit: {selectedElement.label}
                 </span>
-                <span className="font-mono-tabular text-[11px] text-slate-500">
+                <span className="font-mono-tabular text-[11px] text-slate-500 dark:text-slate-400">
                   X {selectedElement.xPct}% · Y {selectedElement.yPct}%
                 </span>
               </div>
@@ -436,14 +437,14 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
               {selectedElement.kind !== 'system_icon' && (
                 <>
                   <div>
-                    <label className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <label className="mb-1 block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                       Text / Placeholder Template
                     </label>
                     <input
                       type="text"
                       value={selectedElement.text}
                       onChange={(e) => updateElement(selectedElement.id, { text: e.target.value })}
-                      className="min-h-[36px] w-full rounded-lg border border-slate-300 px-2.5 text-xs"
+                      className="min-h-[36px] w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                     />
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {PLACEHOLDER_TOKENS.map((tok) => (
@@ -457,7 +458,7 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                                 : tok,
                             })
                           }
-                          className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono-tabular text-[10px] text-slate-700 hover:bg-slate-100"
+                          className="font-mono-tabular rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         >
                           {tok}
                         </button>
@@ -466,7 +467,7 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <label className="text-[11px] font-semibold text-slate-600">
+                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                       Font
                       <select
                         value={selectedElement.fontFamily}
@@ -475,14 +476,14 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                             fontFamily: e.target.value as CertificateElement['fontFamily'],
                           })
                         }
-                        className="mt-1 min-h-[34px] w-full rounded-lg border border-slate-300 bg-white px-2 text-xs"
+                        className="mt-1 min-h-[34px] w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       >
                         <option value="sans">Sans Serif</option>
                         <option value="serif">Institutional Serif</option>
                         <option value="mono">Monospace</option>
                       </select>
                     </label>
-                    <label className="text-[11px] font-semibold text-slate-600">
+                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                       Weight
                       <select
                         value={selectedElement.fontWeight}
@@ -491,7 +492,7 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                             fontWeight: e.target.value as CertificateElement['fontWeight'],
                           })
                         }
-                        className="mt-1 min-h-[34px] w-full rounded-lg border border-slate-300 bg-white px-2 text-xs"
+                        className="mt-1 min-h-[34px] w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       >
                         <option value="normal">Regular</option>
                         <option value="bold">Bold</option>
@@ -500,7 +501,7 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                   </div>
 
                   <div className="grid grid-cols-3 gap-2">
-                    <label className="text-[11px] font-semibold text-slate-600">
+                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                       Size (pt)
                       <input
                         type="number"
@@ -512,10 +513,10 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                             fontSize: Math.max(8, Math.min(48, Number(e.target.value) || 12)),
                           })
                         }
-                        className="font-mono-tabular mt-1 min-h-[34px] w-full rounded-lg border border-slate-300 px-2 text-xs"
+                        className="font-mono-tabular mt-1 min-h-[34px] w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       />
                     </label>
-                    <label className="text-[11px] font-semibold text-slate-600">
+                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                       Align
                       <select
                         value={selectedElement.align}
@@ -524,14 +525,14 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                             align: e.target.value as CertificateElement['align'],
                           })
                         }
-                        className="mt-1 min-h-[34px] w-full rounded-lg border border-slate-300 bg-white px-2 text-xs"
+                        className="mt-1 min-h-[34px] w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       >
                         <option value="left">Left</option>
                         <option value="center">Center</option>
                         <option value="right">Right</option>
                       </select>
                     </label>
-                    <label className="text-[11px] font-semibold text-slate-600">
+                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                       Color
                       <input
                         type="color"
@@ -539,7 +540,7 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                         onChange={(e) =>
                           updateElement(selectedElement.id, { color: e.target.value })
                         }
-                        className="mt-1 h-[34px] w-full cursor-pointer rounded-lg border border-slate-300 bg-white p-0.5"
+                        className="mt-1 h-[34px] w-full cursor-pointer rounded-lg border border-slate-300 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900"
                       />
                     </label>
                   </div>
@@ -547,7 +548,7 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
               )}
 
               <div className="grid grid-cols-2 gap-2">
-                <label className="text-[11px] font-semibold text-slate-600">
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                   Horizontal X (%)
                   <input
                     type="number"
@@ -560,10 +561,10 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                         xPct: Math.max(0, Math.min(100, Number(e.target.value) || 50)),
                       })
                     }
-                    className="font-mono-tabular mt-1 min-h-[34px] w-full rounded-lg border border-slate-300 px-2 text-xs"
+                    className="font-mono-tabular mt-1 min-h-[34px] w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   />
                 </label>
-                <label className="text-[11px] font-semibold text-slate-600">
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                   Vertical Y (%)
                   <input
                     type="number"
@@ -576,7 +577,7 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
                         yPct: Math.max(0, Math.min(100, Number(e.target.value) || 50)),
                       })
                     }
-                    className="font-mono-tabular mt-1 min-h-[34px] w-full rounded-lg border border-slate-300 px-2 text-xs"
+                    className="font-mono-tabular mt-1 min-h-[34px] w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   />
                 </label>
               </div>

@@ -198,3 +198,21 @@ data class PendingOfflineSubmission(
     val questionResults: List<QuestionAttemptRecord>,
     val quizResults: List<QuizAttemptSummary>,
 )
+
+@Serializable
+data class SystemBranding(
+    val systemName: String = "CertiField",
+    val tagline: String = "Offline-ready Android field training and verifiable PDF certification.",
+    val iconUrl: String = "/icon.svg",
+    val accentColor: String = "#1d4ed8",
+    val updatedAt: String = "",
+)
+
+@Serializable
+data class SavedAuthSession(
+    val token: String,
+    val user: UserAccount,
+    val serverUrl: String = "",
+    val savedAt: String = "",
+)
+

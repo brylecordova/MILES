@@ -6,6 +6,7 @@ import {
   BookOpen,
   CheckCircle2,
   ClipboardList,
+  Download,
   ExternalLink,
   Film,
   ImageIcon,
@@ -33,7 +34,13 @@ import type {
   QuizQuestion,
   SystemBranding,
 } from '../types/training';
-import { api, getAdminToken, setAdminToken, uploadAdminApk } from '../utils/api';
+import {
+  api,
+  downloadAndroidProjectZip,
+  getAdminToken,
+  setAdminToken,
+  uploadAdminApk,
+} from '../utils/api';
 import { getDefaultCertificateDesign } from '../utils/certificateDefaults';
 import { AdminAnalyticsDashboard } from './AdminAnalyticsDashboard';
 import { CertificateDesigner } from './CertificateDesigner';
@@ -103,6 +110,12 @@ interface AdminStudioProps {
   onCoursesMutated: () => Promise<void>;
 }
 
+const inputCls =
+  'min-h-[42px] w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400';
+const cardCls =
+  'rounded-2xl border border-slate-200/80 bg-white/85 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/75';
+const labelCls = 'mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-200';
+
 export const AdminStudio: React.FC<AdminStudioProps> = ({
   systemBranding,
   onBrandingUpdated,
@@ -142,6 +155,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   });
   const [savingBranding, setSavingBranding] = useState(false);
   const [uploadingApk, setUploadingApk] = useState(false);
+  const [downloadingSourceZip, setDownloadingSourceZip] = useState(false);
   const [apkSizeBytes, setApkSizeBytes] = useState<number | null>(null);
   const [brandingError, setBrandingError] = useState<string | null>(null);
   const [brandingSuccess, setBrandingSuccess] = useState<string | null>(null);
@@ -297,6 +311,20 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     }
   }
 
+  async function handleDownloadBrandedAndroidZip() {
+    setDownloadingSourceZip(true);
+    setBrandingError(null);
+    try {
+      await downloadAndroidProjectZip();
+    } catch (err) {
+      setBrandingError(
+        err instanceof Error ? err.message : 'Failed to download Android Studio ZIP.'
+      );
+    } finally {
+      setDownloadingSourceZip(false);
+    }
+  }
+
   async function handleSaveBranding(e: React.FormEvent) {
     e.preventDefault();
     setSavingBranding(true);
@@ -305,7 +333,9 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     try {
       const res = await api.updateSystemBranding(brandingDraft);
       onBrandingUpdated(res.branding);
-      setBrandingSuccess('System branding and Android Download App settings saved.');
+      setBrandingSuccess(
+        'System branding saved. Android app resources (app_name & launcher icons) and live Android clients are now synced.'
+      );
     } catch (err) {
       setBrandingError(err instanceof Error ? err.message : 'Failed to save system branding.');
     } finally {
@@ -515,14 +545,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
       authStatus && !authStatus.configuredViaEnv && !authStatus.hasClaimedPasscode;
 
     return (
-      <div className="mx-auto my-8 max-w-md rounded-2xl border border-slate-200 bg-white p-7">
-        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-white">
+      <div className={`mx-auto my-8 max-w-md p-7 ${cardCls}`}>
+        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950">
           <Lock className="h-5 w-5" />
         </div>
-        <h1 className="text-xl font-bold text-slate-900">
+        <h1 className="text-xl font-bold text-slate-900 dark:text-white">
           {isFirstRun ? 'First-Run Admin Studio Setup' : 'Admin Course Studio Sign In'}
         </h1>
-        <p className="mt-1.5 text-sm text-slate-600">
+        <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">
           {isFirstRun
             ? 'No admin passcode is configured yet. Claim your studio passcode to configure courses and review submissions.'
             : 'Enter the administrator passcode to manage courses, lesson media, quizzes, and certificates.'}
@@ -530,7 +560,10 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
 
         <form onSubmit={handleAdminAuthSubmit} className="mt-5 space-y-4">
           <div>
-            <label htmlFor="admin-passcode" className="mb-1.5 block text-sm font-medium text-slate-700">
+            <label
+              htmlFor="admin-passcode"
+              className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
+            >
               {isFirstRun ? 'Choose Admin Passcode' : 'Admin Passcode'}
             </label>
             <input
@@ -541,12 +574,12 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
               placeholder="Minimum 6 characters"
-              className="min-h-[44px] w-full rounded-xl border border-slate-300 px-3.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-700/20"
+              className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-700/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400"
             />
           </div>
 
           {authError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300">
               {authError}
             </div>
           )}
@@ -554,7 +587,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           <button
             type="submit"
             disabled={authLoading}
-            className="min-h-[48px] w-full rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+            className="min-h-[48px] w-full rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
           >
             {authLoading
               ? 'Verifying...'
@@ -574,8 +607,8 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   return (
     <div className="grid gap-6 pb-16 lg:grid-cols-[240px_1fr]">
       {/* Admin Left Sidebar */}
-      <aside className="rounded-2xl border border-slate-200 bg-white p-4 lg:sticky lg:top-20 lg:self-start">
-        <p className="px-2 text-xs font-semibold text-slate-500">
+      <aside className={`p-4 lg:sticky lg:top-20 lg:self-start ${cardCls}`}>
+        <p className="px-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
           {systemBranding.systemName} · /systemadministrator
         </p>
         <nav className="mt-3 flex flex-wrap gap-2 lg:flex-col">
@@ -588,8 +621,8 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             }}
             className={`flex min-h-[44px] flex-1 items-center gap-2.5 rounded-xl px-3 text-sm font-semibold transition-colors ${
               adminTab === 'analytics'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-700 hover:bg-slate-100'
+                ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
+                : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
             }`}
           >
             <BarChart3 className="h-4 w-4" />
@@ -603,8 +636,8 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             }}
             className={`flex min-h-[44px] flex-1 items-center gap-2.5 rounded-xl px-3 text-sm font-semibold transition-colors ${
               adminTab === 'courses'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-700 hover:bg-slate-100'
+                ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
+                : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
             }`}
           >
             <BookOpen className="h-4 w-4" />
@@ -618,8 +651,8 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             }}
             className={`flex min-h-[44px] flex-1 items-center justify-between rounded-xl px-3 text-sm font-semibold transition-colors ${
               adminTab === 'submissions'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-700 hover:bg-slate-100'
+                ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
+                : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
             }`}
           >
             <span className="flex items-center gap-2.5">
@@ -639,8 +672,8 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             }}
             className={`flex min-h-[44px] flex-1 items-center gap-2.5 rounded-xl px-3 text-sm font-semibold transition-colors ${
               adminTab === 'branding'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-700 hover:bg-slate-100'
+                ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
+                : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
             }`}
           >
             <Palette className="h-4 w-4" />
@@ -648,14 +681,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           </button>
         </nav>
 
-        <div className="mt-4 border-t border-slate-200 pt-4">
+        <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
           <button
             type="button"
             onClick={() => {
               setAdminToken(null);
               setAuthed(false);
             }}
-            className="min-h-[40px] w-full rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            className="min-h-[40px] w-full rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             Lock Admin Studio
           </button>
@@ -677,8 +710,10 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           <div className="space-y-5">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">Course Catalog &amp; Curriculum</h1>
-                <p className="mt-1 text-sm text-slate-600">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+                  Course Catalog &amp; Curriculum
+                </h1>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
                   Configure banners, rich lesson blocks with embedded videos/images anywhere, and multi-format quizzes.
                 </p>
               </div>
@@ -690,14 +725,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   setEditorError(null);
                   setEditorSuccess(null);
                 }}
-                className="flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800"
+                className="flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
               >
                 <Plus className="h-4 w-4" />
                 <span>New Course</span>
               </button>
             </div>
 
-            <div className="divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div className={`divide-y divide-slate-200 overflow-hidden dark:divide-slate-800 ${cardCls}`}>
               {courses.map((course) => {
                 const lessons = course.modules.filter((m) => m.kind === 'lesson').length;
                 const quizzes = course.modules.filter((m) => m.kind === 'quiz').length;
@@ -710,13 +745,15 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       <CourseBannerImage
                         url={course.bannerUrl}
                         title={course.title}
-                        className="h-16 w-24 shrink-0 rounded-xl border border-slate-200"
+                        className="h-16 w-24 shrink-0 rounded-xl border border-slate-200 dark:border-slate-700"
                       />
                       <div>
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                           <span
                             className={`font-semibold ${
-                              course.published ? 'text-emerald-700' : 'text-amber-700'
+                              course.published
+                                ? 'text-emerald-700 dark:text-emerald-400'
+                                : 'text-amber-700 dark:text-amber-400'
                             }`}
                           >
                             {course.published ? 'Published' : 'Draft'}
@@ -729,7 +766,9 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             {quizzes === 1 ? 'quiz' : 'quizzes'}
                           </span>
                         </div>
-                        <h2 className="mt-1 text-base font-bold text-slate-900">{course.title}</h2>
+                        <h2 className="mt-1 text-base font-bold text-slate-900 dark:text-white">
+                          {course.title}
+                        </h2>
                       </div>
                     </div>
 
@@ -749,7 +788,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                           setEditorError(null);
                           setEditorSuccess(null);
                         }}
-                        className="min-h-[40px] rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+                        className="min-h-[40px] rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
                       >
                         Edit Curriculum &amp; Certificate
                       </button>
@@ -757,7 +796,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                         type="button"
                         onClick={() => handleDeleteCourse(course._id)}
                         aria-label={`Delete ${course.title}`}
-                        className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-700"
+                        className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-red-950/60 dark:hover:text-red-300"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -776,14 +815,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
               <button
                 type="button"
                 onClick={() => setDraft(null)}
-                className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 Back to Course List
               </button>
               <button
                 type="submit"
                 disabled={savingCourse}
-                className="flex min-h-[44px] items-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+                className="flex min-h-[44px] items-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
               >
                 <Save className="h-4 w-4" />
                 <span>{savingCourse ? 'Saving...' : 'Save Course'}</span>
@@ -791,78 +830,70 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             </div>
 
             {editorError && (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300">
                 {editorError}
               </div>
             )}
             {editorSuccess && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-300">
                 {editorSuccess}
               </div>
             )}
 
             {/* Metadata Card */}
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
-              <h2 className="text-lg font-bold text-slate-900">Course Details &amp; Banner</h2>
+            <section className={`space-y-4 p-6 ${cardCls}`}>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                Course Details &amp; Banner
+              </h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">
-                    Course Title
-                  </label>
+                  <label className={labelCls}>Course Title</label>
                   <input
                     type="text"
                     required
                     value={draft.title}
                     onChange={(e) => setDraft({ ...draft, title: e.target.value })}
                     placeholder="e.g. Confined Space Entry Certification"
-                    className="min-h-[42px] w-full rounded-xl border border-slate-300 px-3 text-sm"
+                    className={inputCls}
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">
-                    Category
-                  </label>
+                  <label className={labelCls}>Category</label>
                   <input
                     type="text"
                     value={draft.category}
                     onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-                    className="min-h-[42px] w-full rounded-xl border border-slate-300 px-3 text-sm"
+                    className={inputCls}
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">
-                    Certificate Title
-                  </label>
+                  <label className={labelCls}>Certificate Title</label>
                   <input
                     type="text"
                     value={draft.certificateTitle}
                     onChange={(e) => setDraft({ ...draft, certificateTitle: e.target.value })}
                     placeholder="Certified Specialist"
-                    className="min-h-[42px] w-full rounded-xl border border-slate-300 px-3 text-sm"
+                    className={inputCls}
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">
-                    Issuing Organization
-                  </label>
+                  <label className={labelCls}>Issuing Organization</label>
                   <input
                     type="text"
                     value={draft.issuerName}
                     onChange={(e) => setDraft({ ...draft, issuerName: e.target.value })}
-                    className="min-h-[42px] w-full rounded-xl border border-slate-300 px-3 text-sm"
+                    className={inputCls}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-700">
-                  Course Description
-                </label>
+                <label className={labelCls}>Course Description</label>
                 <textarea
                   rows={3}
                   value={draft.description}
                   onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                  className="w-full rounded-xl border border-slate-300 p-3 text-sm"
+                  className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
               </div>
 
@@ -871,20 +902,18 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 <CourseBannerImage
                   url={draft.bannerUrl}
                   title={draft.title || 'Course Banner'}
-                  className="h-28 w-full rounded-xl border border-slate-200"
+                  className="h-28 w-full rounded-xl border border-slate-200 dark:border-slate-700"
                 />
                 <div className="space-y-2.5">
-                  <label className="block text-xs font-semibold text-slate-700">
-                    Banner Image URL or Upload
-                  </label>
+                  <label className={labelCls}>Banner Image URL or Upload</label>
                   <div className="flex flex-wrap gap-2">
                     <input
                       type="text"
                       value={draft.bannerUrl}
                       onChange={(e) => setDraft({ ...draft, bannerUrl: e.target.value })}
-                      className="min-h-[40px] flex-1 rounded-xl border border-slate-300 px-3 text-xs"
+                      className="min-h-[40px] flex-1 rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                     />
-                    <label className="flex min-h-[40px] cursor-pointer items-center gap-1.5 rounded-xl border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                    <label className="flex min-h-[40px] cursor-pointer items-center gap-1.5 rounded-xl border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
                       <Upload className="h-3.5 w-3.5" />
                       <span>{uploadingKey === 'banner' ? 'Uploading...' : 'Upload'}</span>
                       <input
@@ -908,7 +937,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                         key={p.url}
                         type="button"
                         onClick={() => setDraft({ ...draft, bannerUrl: p.url })}
-                        className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                        className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                       >
                         Use {p.label}
                       </button>
@@ -917,7 +946,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 </div>
               </div>
 
-              <label className="inline-flex min-h-[36px] cursor-pointer items-center gap-2 text-sm font-medium text-slate-800">
+              <label className="inline-flex min-h-[36px] cursor-pointer items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-200">
                 <input
                   type="checkbox"
                   checked={draft.published}
@@ -949,10 +978,10 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             <section className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">
                     Curriculum Sequence (Place Lessons &amp; Quizzes Anywhere)
                   </h2>
-                  <p className="text-xs text-slate-600">
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
                     Insert quizzes after any number of lessons, reorder modules, and place images/videos at any position inside lessons.
                   </p>
                 </div>
@@ -960,7 +989,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   <button
                     type="button"
                     onClick={() => addModule('lesson')}
-                    className="flex min-h-[40px] items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+                    className="flex min-h-[40px] items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     <span>Add Lesson</span>
@@ -968,7 +997,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   <button
                     type="button"
                     onClick={() => addModule('quiz')}
-                    className="flex min-h-[40px] items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 text-xs font-semibold text-white hover:bg-slate-800"
+                    className="flex min-h-[40px] items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     <span>Add Quiz</span>
@@ -977,12 +1006,9 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
               </div>
 
               {draft.modules.map((mod, modIdx) => (
-                <div
-                  key={mod.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                    <span className="font-mono-tabular text-xs font-bold text-blue-700">
+                <div key={mod.id} className={`space-y-4 p-5 ${cardCls}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+                    <span className="font-mono-tabular text-xs font-bold text-blue-700 dark:text-sky-400">
                       #{modIdx + 1} · {mod.kind === 'lesson' ? 'LESSON' : 'QUIZ CHECKPOINT'}
                     </span>
                     <div className="flex items-center gap-1">
@@ -991,7 +1017,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                         onClick={() => moveModule(modIdx, -1)}
                         disabled={modIdx === 0}
                         aria-label="Move module up"
-                        className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                        className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                       >
                         <ArrowUp className="h-4 w-4" />
                       </button>
@@ -1000,7 +1026,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                         onClick={() => moveModule(modIdx, 1)}
                         disabled={modIdx === draft.modules.length - 1}
                         aria-label="Move module down"
-                        className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                        className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                       >
                         <ArrowDown className="h-4 w-4" />
                       </button>
@@ -1008,7 +1034,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                         type="button"
                         onClick={() => removeModule(modIdx)}
                         aria-label="Remove module"
-                        className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-700"
+                        className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-red-950/60 dark:hover:text-red-300"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -1019,22 +1045,18 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                     <div className="space-y-4">
                       <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
                         <div>
-                          <label className="mb-1 block text-xs font-semibold text-slate-700">
-                            Lesson Title
-                          </label>
+                          <label className={labelCls}>Lesson Title</label>
                           <input
                             type="text"
                             value={mod.title}
                             onChange={(e) =>
                               updateModule(modIdx, { ...mod, title: e.target.value })
                             }
-                            className="min-h-[40px] w-full rounded-xl border border-slate-300 px-3 text-sm font-medium"
+                            className={inputCls}
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-xs font-semibold text-slate-700">
-                            Est. Minutes
-                          </label>
+                          <label className={labelCls}>Est. Minutes</label>
                           <input
                             type="number"
                             min={1}
@@ -1045,14 +1067,13 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                 estimatedMinutes: Number(e.target.value) || 5,
                               })
                             }
-                            className="font-mono-tabular min-h-[40px] w-full rounded-xl border border-slate-300 px-3 text-sm"
+                            className={`font-mono-tabular ${inputCls}`}
                           />
                         </div>
                       </div>
 
-                      {/* Insert block bar at top */}
-                      <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-50 p-2.5">
-                        <span className="mr-1 text-xs font-semibold text-slate-500">
+                      <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-50 p-2.5 dark:bg-slate-950/60">
+                        <span className="mr-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
                           Add block:
                         </span>
                         {(
@@ -1068,22 +1089,21 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             key={bType}
                             type="button"
                             onClick={() => addLessonBlock(modIdx, mod, bType, false)}
-                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                           >
                             + {label}
                           </button>
                         ))}
                       </div>
 
-                      {/* Ordered Lesson Blocks */}
                       <div className="space-y-3">
                         {mod.blocks.map((blk, blkIdx) => (
                           <div
                             key={blk.id}
-                            className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2.5"
+                            className="space-y-2.5 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-950/60"
                           >
                             <div className="flex items-center justify-between">
-                              <span className="font-mono-tabular text-xs font-semibold text-slate-600 uppercase">
+                              <span className="font-mono-tabular text-xs font-semibold text-slate-600 uppercase dark:text-slate-300">
                                 Block {blkIdx + 1}: {blk.type}
                               </span>
                               <div className="flex items-center gap-1">
@@ -1091,7 +1111,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                   type="button"
                                   disabled={blkIdx === 0}
                                   onClick={() => moveLessonBlock(modIdx, mod, blkIdx, -1)}
-                                  className="rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 disabled:opacity-40"
+                                  className="rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
                                   aria-label="Move block up"
                                 >
                                   <ArrowUp className="h-3.5 w-3.5" />
@@ -1100,7 +1120,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                   type="button"
                                   disabled={blkIdx === mod.blocks.length - 1}
                                   onClick={() => moveLessonBlock(modIdx, mod, blkIdx, 1)}
-                                  className="rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 disabled:opacity-40"
+                                  className="rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
                                   aria-label="Move block down"
                                 >
                                   <ArrowDown className="h-3.5 w-3.5" />
@@ -1113,7 +1133,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                       blocks: mod.blocks.filter((_, i) => i !== blkIdx),
                                     })
                                   }
-                                  className="rounded-md border border-slate-200 bg-white p-1.5 text-slate-500 hover:text-red-700"
+                                  className="rounded-md border border-slate-200 bg-white p-1.5 text-slate-500 hover:text-red-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:text-red-300"
                                   aria-label="Delete block"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -1131,7 +1151,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                       level: Number(e.target.value) as 1 | 2 | 3,
                                     })
                                   }
-                                  className="rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold"
+                                  className="rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                 >
                                   <option value={1}>H1</option>
                                   <option value={2}>H2</option>
@@ -1146,7 +1166,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                       text: e.target.value,
                                     })
                                   }
-                                  className="min-h-[38px] flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold"
+                                  className="min-h-[38px] flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                 />
                               </div>
                             )}
@@ -1162,7 +1182,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                         text: `${blk.text} **bold text**`,
                                       })
                                     }
-                                    className="rounded border border-slate-200 bg-white px-2 py-0.5 font-bold"
+                                    className="rounded border border-slate-200 bg-white px-2 py-0.5 font-bold dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                                   >
                                     B
                                   </button>
@@ -1174,7 +1194,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                         text: `${blk.text} *italic text*`,
                                       })
                                     }
-                                    className="rounded border border-slate-200 bg-white px-2 py-0.5 italic"
+                                    className="rounded border border-slate-200 bg-white px-2 py-0.5 italic dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                                   >
                                     I
                                   </button>
@@ -1186,11 +1206,11 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                         text: `${blk.text} __underlined__`,
                                       })
                                     }
-                                    className="rounded border border-slate-200 bg-white px-2 py-0.5 underline"
+                                    className="rounded border border-slate-200 bg-white px-2 py-0.5 underline dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                                   >
                                     U
                                   </button>
-                                  <span className="text-slate-500">
+                                  <span className="text-slate-500 dark:text-slate-400">
                                     Supports **bold**, *italic*, __underline__
                                   </span>
                                 </div>
@@ -1203,7 +1223,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                       text: e.target.value,
                                     })
                                   }
-                                  className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm"
+                                  className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                 />
                               </div>
                             )}
@@ -1220,16 +1240,18 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                     })
                                   }
                                   placeholder="One bullet point per line..."
-                                  className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm"
+                                  className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                 />
-                                <p className="text-xs text-slate-500">One bullet item per line.</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                  One bullet item per line.
+                                </p>
                               </div>
                             )}
 
                             {(blk.type === 'image' || blk.type === 'video') && (
                               <div className="space-y-2">
                                 <div className="flex flex-wrap gap-2">
-                                  <div className="flex items-center text-slate-500">
+                                  <div className="flex items-center text-slate-500 dark:text-slate-400">
                                     {blk.type === 'video' ? (
                                       <Film className="h-4 w-4" />
                                     ) : (
@@ -1250,9 +1272,9 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                         ? '/media/safety-loto-brief.mp4 or upload'
                                         : '/src/assets/images/... or upload'
                                     }
-                                    className="min-h-[38px] flex-1 rounded-lg border border-slate-300 bg-white px-3 text-xs"
+                                    className="min-h-[38px] flex-1 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                   />
-                                  <label className="flex min-h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                                  <label className="flex min-h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
                                     <Upload className="h-3.5 w-3.5" />
                                     <span>
                                       {uploadingKey === blk.id ? 'Uploading...' : 'Upload'}
@@ -1289,7 +1311,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                     })
                                   }
                                   placeholder="Optional caption..."
-                                  className="min-h-[36px] w-full rounded-lg border border-slate-300 bg-white px-3 text-xs"
+                                  className="min-h-[36px] w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                 />
                               </div>
                             )}
@@ -1302,22 +1324,18 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                     <div className="space-y-4">
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div>
-                          <label className="mb-1 block text-xs font-semibold text-slate-700">
-                            Quiz Title
-                          </label>
+                          <label className={labelCls}>Quiz Title</label>
                           <input
                             type="text"
                             value={mod.title}
                             onChange={(e) =>
                               updateModule(modIdx, { ...mod, title: e.target.value })
                             }
-                            className="min-h-[40px] w-full rounded-xl border border-slate-300 px-3 text-sm font-medium"
+                            className={inputCls}
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-xs font-semibold text-slate-700">
-                            Passing Score (%)
-                          </label>
+                          <label className={labelCls}>Passing Score (%)</label>
                           <input
                             type="number"
                             min={0}
@@ -1332,13 +1350,11 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                 ),
                               })
                             }
-                            className="font-mono-tabular min-h-[40px] w-full rounded-xl border border-slate-300 px-3 text-sm"
+                            className={`font-mono-tabular ${inputCls}`}
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-xs font-semibold text-slate-700">
-                            Failure Rule
-                          </label>
+                          <label className={labelCls}>Failure Rule</label>
                           <select
                             value={mod.failureRule}
                             onChange={(e) =>
@@ -1347,7 +1363,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                 failureRule: e.target.value as QuizFailureRule,
                               })
                             }
-                            className="min-h-[40px] w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
+                            className={inputCls}
                           >
                             <option value="retry_quiz">Retry this quiz only</option>
                             <option value="restart_since_last_quiz">
@@ -1357,9 +1373,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                           </select>
                         </div>
                         <div>
-                          <label className="mb-1 block text-xs font-semibold text-slate-700">
-                            Passing Rule
-                          </label>
+                          <label className={labelCls}>Passing Rule</label>
                           <select
                             value={mod.passingRule}
                             onChange={(e) =>
@@ -1368,7 +1382,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                 passingRule: e.target.value as QuizPassingRule,
                               })
                             }
-                            className="min-h-[40px] w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
+                            className={inputCls}
                           >
                             <option value="proceed_next">Proceed to next module</option>
                             <option value="require_manual_review">
@@ -1378,15 +1392,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                         </div>
                       </div>
 
-                      {/* Questions */}
                       <div className="space-y-3">
                         {mod.questions.map((q, qIdx) => (
                           <div
                             key={q.id}
-                            className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3"
+                            className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60"
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-bold text-slate-700">
+                              <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
                                 Q{qIdx + 1} · {q.type.replace('_', ' ').toUpperCase()}
                               </span>
                               <button
@@ -1397,7 +1410,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                     questions: mod.questions.filter((_, i) => i !== qIdx),
                                   })
                                 }
-                                className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 hover:text-red-700"
+                                className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 hover:text-red-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:text-red-300"
                                 aria-label="Delete question"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1413,7 +1426,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                 updateModule(modIdx, { ...mod, questions: qs });
                               }}
                               placeholder="Question prompt..."
-                              className="min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium"
+                              className="min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                             />
 
                             {(q.type === 'multiple_choice' || q.type === 'select_all') && (
@@ -1454,7 +1467,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                           qs[qIdx] = { ...q, options: opts };
                                           updateModule(modIdx, { ...mod, questions: qs });
                                         }}
-                                        className="min-h-[36px] flex-1 rounded-lg border border-slate-300 bg-white px-3 text-xs"
+                                        className="min-h-[36px] flex-1 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                       />
                                     </div>
                                   );
@@ -1469,7 +1482,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                     };
                                     updateModule(modIdx, { ...mod, questions: qs });
                                   }}
-                                  className="text-xs font-semibold text-blue-700 hover:underline"
+                                  className="text-xs font-semibold text-blue-700 hover:underline dark:text-sky-400"
                                 >
                                   + Add option
                                 </button>
@@ -1477,7 +1490,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             )}
 
                             {q.type === 'true_false' && (
-                              <div className="flex gap-4 text-xs font-medium">
+                              <div className="flex gap-4 text-xs font-medium text-slate-800 dark:text-slate-200">
                                 {[
                                   { idx: 0, label: 'True is correct' },
                                   { idx: 1, label: 'False is correct' },
@@ -1517,7 +1530,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                     updateModule(modIdx, { ...mod, questions: qs });
                                   }}
                                   placeholder="Rubric keywords (comma-separated)"
-                                  className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 text-xs"
+                                  className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                 />
                                 <input
                                   type="text"
@@ -1528,7 +1541,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                     updateModule(modIdx, { ...mod, questions: qs });
                                   }}
                                   placeholder="Model answer shown to learner"
-                                  className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 text-xs"
+                                  className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                 />
                               </div>
                             )}
@@ -1542,14 +1555,16 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                 updateModule(modIdx, { ...mod, questions: qs });
                               }}
                               placeholder="Explanation shown if answered wrong..."
-                              className="min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-3 text-xs"
+                              className="min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                             />
                           </div>
                         ))}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2.5">
-                        <span className="text-xs font-semibold text-slate-600">Add question:</span>
+                      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2.5 dark:bg-slate-950/60">
+                        <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                          Add question:
+                        </span>
                         {(
                           [
                             ['multiple_choice', 'Multiple Choice'],
@@ -1562,7 +1577,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             key={qType}
                             type="button"
                             onClick={() => addQuestionToQuiz(modIdx, mod, qType)}
-                            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                           >
                             + {label}
                           </button>
@@ -1576,15 +1591,15 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                     <button
                       type="button"
                       onClick={() => addModule('lesson', modIdx)}
-                      className="text-slate-500 hover:text-blue-700"
+                      className="text-slate-500 hover:text-blue-700 dark:text-slate-400 dark:hover:text-sky-400"
                     >
                       + Insert Lesson Below
                     </button>
-                    <span className="text-slate-300">|</span>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
                     <button
                       type="button"
                       onClick={() => addModule('quiz', modIdx)}
-                      className="text-slate-500 hover:text-blue-700"
+                      className="text-slate-500 hover:text-blue-700 dark:text-slate-400 dark:hover:text-sky-400"
                     >
                       + Insert Quiz Below
                     </button>
@@ -1600,12 +1615,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           <div className="space-y-5">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">Learner Submissions Queue</h1>
-                <p className="mt-1 text-sm text-slate-600">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+                  Learner Submissions Queue
+                </h1>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
                   Inspect per-question attempt counts, essay responses, and approve or reject certificates.
                 </p>
               </div>
-              <div className="inline-flex rounded-xl bg-slate-100 p-1">
+              <div className="inline-flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
                 {[
                   { id: 'all', label: 'All' },
                   { id: 'pending_review', label: 'Pending' },
@@ -1617,7 +1634,9 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                     type="button"
                     onClick={() => setSubFilter(f.id as typeof subFilter)}
                     className={`min-h-[36px] rounded-lg px-3 text-xs font-semibold ${
-                      subFilter === f.id ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                      subFilter === f.id
+                        ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-950 dark:text-white'
+                        : 'text-slate-600 dark:text-slate-300'
                     }`}
                   >
                     {f.label}
@@ -1627,11 +1646,11 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             </div>
 
             {filteredSubs.length === 0 ? (
-              <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+              <div className={`p-10 text-center text-sm text-slate-500 dark:text-slate-400 ${cardCls}`}>
                 No learner submissions in this status yet.
               </div>
             ) : (
-              <div className="divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className={`divide-y divide-slate-200 overflow-hidden dark:divide-slate-800 ${cardCls}`}>
                 {filteredSubs.map((sub) => (
                   <div
                     key={sub._id}
@@ -1642,10 +1661,10 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                         <span
                           className={`font-semibold ${
                             sub.status === 'approved'
-                              ? 'text-emerald-700'
+                              ? 'text-emerald-700 dark:text-emerald-400'
                               : sub.status === 'rejected'
-                              ? 'text-red-700'
-                              : 'text-amber-700'
+                              ? 'text-red-700 dark:text-red-400'
+                              : 'text-amber-700 dark:text-amber-400'
                           }`}
                         >
                           {sub.status === 'approved'
@@ -1655,18 +1674,21 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             : 'Pending Review'}
                         </span>
                         <span aria-hidden="true">·</span>
-                        <span className="font-mono-tabular font-semibold text-slate-900">
+                        <span className="font-mono-tabular font-semibold text-slate-900 dark:text-white">
                           {sub.overallScore}%
                         </span>
                         <span aria-hidden="true">·</span>
-                        <span className="text-slate-500">
+                        <span className="text-slate-500 dark:text-slate-400">
                           {new Date(sub.submittedAt).toLocaleString()}
                         </span>
                       </div>
-                      <h2 className="mt-1 text-base font-bold text-slate-900">
-                        {sub.userName} <span className="font-normal text-slate-500">({sub.userEmail})</span>
+                      <h2 className="mt-1 text-base font-bold text-slate-900 dark:text-white">
+                        {sub.userName}{' '}
+                        <span className="font-normal text-slate-500 dark:text-slate-400">
+                          ({sub.userEmail})
+                        </span>
                       </h2>
-                      <p className="text-xs text-slate-600">{sub.courseTitle}</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-300">{sub.courseTitle}</p>
                     </div>
 
                     <button
@@ -1675,7 +1697,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                         setSelectedSub(sub);
                         setReviewFeedback(sub.adminFeedback ?? '');
                       }}
-                      className="min-h-[42px] shrink-0 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800"
+                      className="min-h-[42px] shrink-0 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
                     >
                       Inspect Tries &amp; Grade
                     </button>
@@ -1692,71 +1714,81 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             <button
               type="button"
               onClick={() => setSelectedSub(null)}
-              className="min-h-[42px] rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              className="min-h-[42px] rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Back to Submissions List
             </button>
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-6">
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
+            <section className={`p-6 ${cardCls}`}>
+              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4 dark:border-slate-800">
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900">{selectedSub.courseTitle}</h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Learner: <span className="font-semibold text-slate-900">{selectedSub.userName}</span> ({selectedSub.userEmail})
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                    {selectedSub.courseTitle}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                    Learner:{' '}
+                    <span className="font-semibold text-slate-900 dark:text-white">
+                      {selectedSub.userName}
+                    </span>{' '}
+                    ({selectedSub.userEmail})
                   </p>
                   {selectedSub.completedOfflineAt && (
-                    <p className="mt-0.5 text-xs text-slate-500">
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                       Completed offline on {new Date(selectedSub.completedOfflineAt).toLocaleString()}
                     </p>
                   )}
                 </div>
                 <div className="text-right">
-                  <div className="font-mono-tabular text-2xl font-bold text-slate-900">
+                  <div className="font-mono-tabular text-2xl font-bold text-slate-900 dark:text-white">
                     {selectedSub.overallScore}%
                   </div>
-                  <div className="text-xs font-semibold text-slate-500">
+                  <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                     Status: {selectedSub.status.replace('_', ' ')}
                   </div>
                 </div>
               </div>
 
-              <h3 className="mt-5 text-sm font-bold text-slate-900">
+              <h3 className="mt-5 text-sm font-bold text-slate-900 dark:text-white">
                 Per-Question Attempts &amp; Answers
               </h3>
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
-                    <tr className="border-b border-slate-200 text-slate-500">
+                    <tr className="border-b border-slate-200 text-slate-500 dark:border-slate-800 dark:text-slate-400">
                       <th className="py-2.5 pr-4 font-semibold">Question</th>
                       <th className="py-2.5 pr-4 font-semibold">Learner Response</th>
                       <th className="py-2.5 pr-4 font-semibold">Result</th>
                       <th className="py-2.5 text-right font-semibold">Tries Taken</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {selectedSub.questionResults.map((qr) => (
                       <tr key={qr.questionId} className="align-top">
                         <td className="py-3 pr-4">
-                          <p className="font-semibold text-slate-900">{qr.questionPrompt}</p>
-                          <p className="mt-0.5 text-slate-500">
+                          <p className="font-semibold text-slate-900 dark:text-white">
+                            {qr.questionPrompt}
+                          </p>
+                          <p className="mt-0.5 text-slate-500 dark:text-slate-400">
                             {qr.quizTitle} · {qr.questionType.replace('_', ' ')}
                           </p>
                         </td>
-                        <td className="py-3 pr-4 text-slate-700">{qr.userAnswerLabel}</td>
+                        <td className="py-3 pr-4 text-slate-700 dark:text-slate-300">
+                          {qr.userAnswerLabel}
+                        </td>
                         <td className="py-3 pr-4">
                           {qr.isCorrect ? (
-                            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
+                            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-400">
                               <CheckCircle2 className="h-3.5 w-3.5" />
                               Correct
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 font-semibold text-red-700">
+                            <span className="inline-flex items-center gap-1 font-semibold text-red-700 dark:text-red-400">
                               <XCircle className="h-3.5 w-3.5" />
                               Wrong
                             </span>
                           )}
                         </td>
-                        <td className="font-mono-tabular py-3 text-right font-bold text-slate-900">
+                        <td className="font-mono-tabular py-3 text-right font-bold text-slate-900 dark:text-white">
                           {qr.tries} {qr.tries === 1 ? 'try' : 'tries'}
                         </td>
                       </tr>
@@ -1765,9 +1797,8 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 </table>
               </div>
 
-              {/* Admin Review Decision Controls */}
-              <div className="mt-6 border-t border-slate-200 pt-5 space-y-3">
-                <label className="block text-xs font-semibold text-slate-700">
+              <div className="mt-6 space-y-3 border-t border-slate-200 pt-5 dark:border-slate-800">
+                <label className={labelCls}>
                   Reviewer Feedback (optional, visible to learner)
                 </label>
                 <textarea
@@ -1775,7 +1806,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   value={reviewFeedback}
                   onChange={(e) => setReviewFeedback(e.target.value)}
                   placeholder="Great accuracy on safety procedures..."
-                  className="w-full rounded-xl border border-slate-300 p-3 text-sm"
+                  className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
                 <div className="flex flex-wrap gap-3">
                   <button
@@ -1791,7 +1822,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                     type="button"
                     disabled={reviewLoading}
                     onClick={() => handleReviewDecision('rejected')}
-                    className="flex min-h-[44px] items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                    className="flex min-h-[44px] items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-900/50"
                   >
                     <XCircle className="h-4 w-4" />
                     <span>Reject Submission</span>
@@ -1807,17 +1838,17 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           <form onSubmit={handleSaveBranding} className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
                   Branding &amp; Android App Distribution
                 </h1>
-                <p className="mt-1 text-sm text-slate-600">
-                  Configure the platform title, icon, and whether the public Download App buttons serve a direct .apk download or a Google Play Store link.
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                  Configure the platform title, icon, and whether the public Download App buttons serve a direct .apk download or a Google Play Store link. Saving syncs the Android project&apos;s app name, launcher icon, and connected mobile clients.
                 </p>
               </div>
               <button
                 type="submit"
                 disabled={savingBranding || uploadingApk}
-                className="flex min-h-[44px] items-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+                className="flex min-h-[44px] items-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
               >
                 <Save className="h-4 w-4" />
                 <span>{savingBranding ? 'Saving...' : 'Save Settings'}</span>
@@ -1825,25 +1856,22 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             </div>
 
             {brandingError && (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300">
                 {brandingError}
               </div>
             )}
             {brandingSuccess && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-300">
                 {brandingSuccess}
               </div>
             )}
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 space-y-5">
-              <h2 className="text-base font-bold text-slate-900">System Identity</h2>
+            <section className={`space-y-5 p-6 ${cardCls}`}>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">System Identity</h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label
-                    htmlFor="system-name-input"
-                    className="mb-1 block text-xs font-semibold text-slate-700"
-                  >
-                    System Name
+                  <label htmlFor="system-name-input" className={labelCls}>
+                    System Name (also sets Android APK app_name)
                   </label>
                   <input
                     id="system-name-input"
@@ -1854,14 +1882,11 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       setBrandingDraft({ ...brandingDraft, systemName: e.target.value })
                     }
                     placeholder="e.g. Apex Field Academy"
-                    className="min-h-[42px] w-full rounded-xl border border-slate-300 px-3 text-sm"
+                    className={inputCls}
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="system-accent-input"
-                    className="mb-1 block text-xs font-semibold text-slate-700"
-                  >
+                  <label htmlFor="system-accent-input" className={labelCls}>
                     Primary Accent Color
                   </label>
                   <div className="flex items-center gap-2">
@@ -1872,7 +1897,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       onChange={(e) =>
                         setBrandingDraft({ ...brandingDraft, accentColor: e.target.value })
                       }
-                      className="h-[42px] w-14 cursor-pointer rounded-xl border border-slate-300 bg-white p-1"
+                      className="h-[42px] w-14 cursor-pointer rounded-xl border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-950"
                     />
                     <input
                       type="text"
@@ -1880,17 +1905,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       onChange={(e) =>
                         setBrandingDraft({ ...brandingDraft, accentColor: e.target.value })
                       }
-                      className="font-mono-tabular min-h-[42px] flex-1 rounded-xl border border-slate-300 px-3 text-sm"
+                      className={`font-mono-tabular flex-1 ${inputCls}`}
                     />
                   </div>
                 </div>
               </div>
 
               <div>
-                <label
-                  htmlFor="system-tagline-input"
-                  className="mb-1 block text-xs font-semibold text-slate-700"
-                >
+                <label htmlFor="system-tagline-input" className={labelCls}>
                   Landing Page Tagline
                 </label>
                 <input
@@ -1900,12 +1922,12 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   onChange={(e) =>
                     setBrandingDraft({ ...brandingDraft, tagline: e.target.value })
                   }
-                  className="min-h-[42px] w-full rounded-xl border border-slate-300 px-3 text-sm"
+                  className={inputCls}
                 />
               </div>
 
               <div className="grid gap-4 sm:grid-cols-[96px_1fr] sm:items-center">
-                <div className="flex h-24 w-24 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex h-24 w-24 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
                   {brandingDraft.iconUrl ? (
                     <img
                       src={brandingDraft.iconUrl}
@@ -1917,11 +1939,8 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   )}
                 </div>
                 <div className="space-y-2.5">
-                  <label
-                    htmlFor="system-icon-url-input"
-                    className="block text-xs font-semibold text-slate-700"
-                  >
-                    System Icon (URL or Upload PNG/JPG/WebP)
+                  <label htmlFor="system-icon-url-input" className={labelCls}>
+                    System Icon (sets Android Launcher Icon &amp; Runtime Badge)
                   </label>
                   <div className="flex flex-wrap gap-2">
                     <input
@@ -1932,9 +1951,9 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                         setBrandingDraft({ ...brandingDraft, iconUrl: e.target.value })
                       }
                       placeholder="/icon.svg"
-                      className="min-h-[40px] flex-1 rounded-xl border border-slate-300 px-3 text-xs"
+                      className="min-h-[40px] flex-1 rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                     />
-                    <label className="flex min-h-[40px] cursor-pointer items-center gap-1.5 rounded-xl border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                    <label className="flex min-h-[40px] cursor-pointer items-center gap-1.5 rounded-xl border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
                       <Upload className="h-3.5 w-3.5" />
                       <span>{uploadingKey === 'system-icon' ? 'Uploading...' : 'Upload Icon'}</span>
                       <input
@@ -1956,22 +1975,46 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       onClick={() =>
                         setBrandingDraft((prev) => ({ ...prev, iconUrl: '/icon.svg' }))
                       }
-                      className="min-h-[40px] rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                      className="min-h-[40px] rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                     >
                       Default Icon
                     </button>
                   </div>
                 </div>
               </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">
+                    Branded Android Build Source
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
+                    Downloads the Android Studio project with your saved System Name and launcher mipmap icons pre-applied.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={downloadingSourceZip}
+                  onClick={handleDownloadBrandedAndroidZip}
+                  className="flex min-h-[40px] shrink-0 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3.5 text-xs font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>
+                    {downloadingSourceZip
+                      ? 'Preparing .zip...'
+                      : 'Download Branded Android Project (.zip)'}
+                  </span>
+                </button>
+              </div>
             </section>
 
             {/* Android App Distribution Mode & APK Upload */}
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 space-y-5">
+            <section className={`space-y-5 p-6 ${cardCls}`}>
               <div>
-                <h2 className="text-base font-bold text-slate-900">
+                <h2 className="text-base font-bold text-slate-900 dark:text-white">
                   Android &ldquo;Download App&rdquo; Button Behavior
                 </h2>
-                <p className="mt-1 text-xs text-slate-600">
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
                   Choose whether the public landing page Download App button downloads the uploaded .apk file directly or opens your Google Play Store listing.
                 </p>
               </div>
@@ -2009,32 +2052,40 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       }
                       className={`flex flex-col items-start gap-1.5 rounded-2xl border p-4 text-left transition-colors ${
                         selected
-                          ? 'border-blue-700 bg-blue-50/70 ring-1 ring-blue-700'
-                          : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100/70'
+                          ? 'border-blue-700 bg-blue-50/70 ring-1 ring-blue-700 dark:border-sky-400 dark:bg-sky-950/40 dark:ring-sky-400'
+                          : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100/70 dark:border-slate-800 dark:bg-slate-950/50 dark:hover:bg-slate-800/70'
                       }`}
                     >
-                      <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                        <span className={selected ? 'text-blue-700' : 'text-slate-500'}>
+                      <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
+                        <span
+                          className={
+                            selected
+                              ? 'text-blue-700 dark:text-sky-400'
+                              : 'text-slate-500 dark:text-slate-400'
+                          }
+                        >
                           {modeOption.icon}
                         </span>
                         <span>{modeOption.title}</span>
                       </div>
-                      <p className="text-xs leading-relaxed text-slate-600">{modeOption.desc}</p>
+                      <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                        {modeOption.desc}
+                      </p>
                     </button>
                   );
                 })}
               </div>
 
               {(brandingDraft.appDistributionMode ?? 'apk_download') === 'apk_download' ? (
-                <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/60">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
-                      <Smartphone className="h-4 w-4 text-blue-700" />
+                      <Smartphone className="h-4 w-4 text-blue-700 dark:text-sky-400" />
                       <div>
-                        <p className="text-sm font-bold text-slate-900">
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">
                           Upload Android Release (.apk)
                         </p>
-                        <p className="text-xs text-slate-600">
+                        <p className="text-xs text-slate-600 dark:text-slate-300">
                           Build <code className="font-mono-tabular">app-debug.apk</code> via the included{' '}
                           <code className="font-mono-tabular">.github/workflows/android-build.yml</code>{' '}
                           workflow on GitHub Actions, then upload it here.
@@ -2042,7 +2093,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       </div>
                     </div>
 
-                    <label className="flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800">
+                    <label className="flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400">
                       <Upload className="h-3.5 w-3.5" />
                       <span>{uploadingApk ? 'Uploading APK...' : 'Upload .apk File'}</span>
                       <input
@@ -2063,13 +2114,13 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   </div>
 
                   {brandingDraft.apkUrl ? (
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-white px-4 py-3 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-white px-4 py-3 text-xs dark:border-emerald-900/60 dark:bg-slate-900">
                       <div className="min-w-0">
-                        <p className="font-bold text-slate-900">
+                        <p className="font-bold text-slate-900 dark:text-white">
                           Active APK: {brandingDraft.apkFileName || 'app-debug.apk'}
                           {apkSizeBytes ? ` · ${Math.max(1, Math.round(apkSizeBytes / 1024))} KB` : ''}
                         </p>
-                        <p className="font-mono-tabular mt-0.5 truncate text-slate-500">
+                        <p className="font-mono-tabular mt-0.5 truncate text-slate-500 dark:text-slate-400">
                           {brandingDraft.apkUrl}
                         </p>
                       </div>
@@ -2083,23 +2134,20 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             apkFileName: '',
                           }));
                         }}
-                        className="min-h-[34px] rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 hover:bg-red-100"
+                        className="min-h-[34px] rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-900/50"
                       >
                         Remove APK
                       </button>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200">
                       No .apk uploaded yet. Upload your .apk file above or paste an external HTTPS download link below.
                     </div>
                   )}
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <label
-                        htmlFor="apk-version-input"
-                        className="mb-1 block text-xs font-semibold text-slate-700"
-                      >
+                      <label htmlFor="apk-version-input" className={labelCls}>
                         App Version Label
                       </label>
                       <input
@@ -2110,14 +2158,11 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                           setBrandingDraft({ ...brandingDraft, apkVersion: e.target.value })
                         }
                         placeholder="1.0.0"
-                        className="font-mono-tabular min-h-[40px] w-full rounded-xl border border-slate-300 bg-white px-3 text-xs"
+                        className="font-mono-tabular min-h-[40px] w-full rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       />
                     </div>
                     <div>
-                      <label
-                        htmlFor="apk-url-input"
-                        className="mb-1 block text-xs font-semibold text-slate-700"
-                      >
+                      <label htmlFor="apk-url-input" className={labelCls}>
                         Direct APK URL (auto-filled on upload or GitHub Release URL)
                       </label>
                       <input
@@ -2128,17 +2173,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                           setBrandingDraft({ ...brandingDraft, apkUrl: e.target.value })
                         }
                         placeholder="/uploads/... or https://github.com/.../app-debug.apk"
-                        className="font-mono-tabular min-h-[40px] w-full rounded-xl border border-slate-300 bg-white px-3 text-xs"
+                        className="font-mono-tabular min-h-[40px] w-full rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       />
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                  <label
-                    htmlFor="play-store-url-input"
-                    className="block text-xs font-semibold text-slate-700"
-                  >
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/60">
+                  <label htmlFor="play-store-url-input" className={labelCls}>
                     Google Play Store App URL
                   </label>
                   <input
@@ -2149,9 +2191,9 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       setBrandingDraft({ ...brandingDraft, playStoreUrl: e.target.value })
                     }
                     placeholder="https://play.google.com/store/apps/details?id=com.certifield.app"
-                    className="min-h-[42px] w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
+                    className={inputCls}
                   />
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     When saved, all Download App buttons on the public landing page will link directly to this Google Play Store URL.
                   </p>
                 </div>

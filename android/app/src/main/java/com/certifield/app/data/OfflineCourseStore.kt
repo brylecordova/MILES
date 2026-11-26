@@ -1,10 +1,14 @@
 package com.certifield.app.data
 
 import android.content.Context
+import com.certifield.app.model.CertificateRecord
 import com.certifield.app.model.Course
 import com.certifield.app.model.CourseProgressState
+import com.certifield.app.model.CourseSubmission
 import com.certifield.app.model.DownloadedCoursePackage
 import com.certifield.app.model.PendingOfflineSubmission
+import com.certifield.app.model.SavedAuthSession
+import com.certifield.app.model.SystemBranding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -14,18 +18,138 @@ import okhttp3.Request
 import java.io.File
 import java.security.MessageDigest
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 
 class OfflineCourseStore(private val context: Context) {
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-    private val http = OkHttpClient()
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(6, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .build()
 
+    private val prefs = context.getSharedPreferences("certifield_prefs", Context.MODE_PRIVATE)
     private val rootDir: File = File(context.filesDir, "offline_courses").apply { mkdirs() }
     private val mediaDir: File = File(rootDir, "media").apply { mkdirs() }
     private val packagesFile = File(rootDir, "packages.json")
     private val progressFile = File(rootDir, "progress.json")
     private val pendingFile = File(rootDir, "pending_submissions.json")
+    private val brandingFile = File(rootDir, "branding.json")
+    private val brandingIconFile = File(rootDir, "branding_icon.bin")
+    private val authSessionFile = File(rootDir, "auth_session.json")
+    private val submissionsCacheFile = File(rootDir, "submissions_cache.json")
+    private val certificatesCacheFile = File(rootDir, "certificates_cache.json")
 
+    // ---- Connection String & Theme Preferences ----
+    fun loadServerUrl(defaultUrl: String): String {
+        val saved = prefs.getString("server_url", null)?.trim()
+        return if (!saved.isNullOrEmpty()) saved else defaultUrl
+    }
+
+    fun saveServerUrl(url: String) {
+        prefs.edit().putString("server_url", ApiClient.normalizeConnectionUrl(url)).apply()
+    }
+
+    fun loadDarkMode(): Boolean = prefs.getBoolean("dark_mode", false)
+
+    fun saveDarkMode(enabled: Boolean) {
+        prefs.edit().putBoolean("dark_mode", enabled).apply()
+    }
+
+    // ---- Branding Persistence (Synced Online, Used Offline) ----
+    fun loadBranding(): SystemBranding {
+        if (!brandingFile.exists()) return SystemBranding()
+        return runCatching {
+            json.decodeFromString<SystemBranding>(brandingFile.readText())
+        }.getOrDefault(SystemBranding())
+    }
+
+    fun getCachedBrandingIconFile(): File? {
+        return if (brandingIconFile.exists() && brandingIconFile.length() > 0L) brandingIconFile else null
+    }
+
+    suspend fun saveBranding(branding: SystemBranding, serverBaseUrl: String): SystemBranding =
+        withContext(Dispatchers.IO) {
+            brandingFile.writeText(json.encodeToString(branding))
+            val iconUrl = branding.iconUrl.trim()
+            if (iconUrl.isNotEmpty() && !iconUrl.endsWith(".svg", ignoreCase = true)) {
+                val resolved = if (iconUrl.startsWith("http", ignoreCase = true) || iconUrl.startsWith("data:", ignoreCase = true)) {
+                    iconUrl
+                } else {
+                    "${ApiClient.normalizeConnectionUrl(serverBaseUrl)}$iconUrl"
+                }
+                if (resolved.startsWith("http", ignoreCase = true)) {
+                    runCatching {
+                        val req = Request.Builder().url(resolved).build()
+                        http.newCall(req).execute().use { resp ->
+                            if (resp.isSuccessful) {
+                                val bytes = resp.body?.bytes()
+                                if (bytes != null && bytes.isNotEmpty()) {
+                                    brandingIconFile.writeBytes(bytes)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (iconUrl == "/icon.svg") {
+                val fallback = "${ApiClient.normalizeConnectionUrl(serverBaseUrl)}/pwa-192x192.png"
+                runCatching {
+                    val req = Request.Builder().url(fallback).build()
+                    http.newCall(req).execute().use { resp ->
+                        if (resp.isSuccessful) {
+                            val bytes = resp.body?.bytes()
+                            if (bytes != null && bytes.isNotEmpty()) {
+                                brandingIconFile.writeBytes(bytes)
+                            }
+                        }
+                    }
+                }
+            }
+            branding
+        }
+
+    // ---- Auth Credentials / Session Persistence for Offline Use ----
+    fun loadAuthSession(): SavedAuthSession? {
+        if (!authSessionFile.exists()) return null
+        return runCatching {
+            json.decodeFromString<SavedAuthSession>(authSessionFile.readText())
+        }.getOrNull()
+    }
+
+    fun saveAuthSession(session: SavedAuthSession) {
+        authSessionFile.writeText(json.encodeToString(session))
+    }
+
+    fun clearAuthSession() {
+        if (authSessionFile.exists()) authSessionFile.delete()
+        if (submissionsCacheFile.exists()) submissionsCacheFile.delete()
+        if (certificatesCacheFile.exists()) certificatesCacheFile.delete()
+    }
+
+    // ---- Offline Cache for Submissions & Certificates ----
+    fun loadCachedSubmissions(): List<CourseSubmission> {
+        if (!submissionsCacheFile.exists()) return emptyList()
+        return runCatching {
+            json.decodeFromString<List<CourseSubmission>>(submissionsCacheFile.readText())
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveCachedSubmissions(list: List<CourseSubmission>) {
+        submissionsCacheFile.writeText(json.encodeToString(list))
+    }
+
+    fun loadCachedCertificates(): List<CertificateRecord> {
+        if (!certificatesCacheFile.exists()) return emptyList()
+        return runCatching {
+            json.decodeFromString<List<CertificateRecord>>(certificatesCacheFile.readText())
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveCachedCertificates(list: List<CertificateRecord>) {
+        certificatesCacheFile.writeText(json.encodeToString(list))
+    }
+
+    // ---- Courses & Media ----
     suspend fun downloadCourse(
         course: Course,
         serverBaseUrl: String,
@@ -46,8 +170,9 @@ class OfflineCourseStore(private val context: Context) {
         var totalBytes = json.encodeToString(course).toByteArray().size.toLong()
         val steps = maxOf(1, urls.size)
 
+        val normalizedBase = ApiClient.normalizeConnectionUrl(serverBaseUrl)
         urls.forEachIndexed { idx, rawUrl ->
-            val resolved = if (rawUrl.startsWith("http")) rawUrl else "${serverBaseUrl.trimEnd('/')}$rawUrl"
+            val resolved = if (rawUrl.startsWith("http")) rawUrl else "$normalizedBase$rawUrl"
             runCatching {
                 val req = Request.Builder().url(resolved).build()
                 http.newCall(req).execute().use { resp ->

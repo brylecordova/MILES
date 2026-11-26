@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Moon, Sun } from 'lucide-react';
 import { AdminStudio } from './components/AdminStudio';
 import { AndroidInstallModal } from './components/AndroidInstallModal';
+import { FuturisticBackdrop } from './components/FuturisticBackdrop';
 import { LandingPage } from './components/LandingPage';
+import { useTheme } from './hooks/useTheme';
 import type { Course, SystemBranding } from './types/training';
 import { api } from './utils/api';
 import { getDefaultSystemBranding } from './utils/certificateDefaults';
@@ -18,6 +21,7 @@ export default function App() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
   const [installModalOpen, setInstallModalOpen] = useState(false);
+  const { isDark, toggleTheme } = useTheme();
 
   useEffect(() => {
     const handlePop = () => {
@@ -69,56 +73,79 @@ export default function App() {
 
   if (isAdminRoute) {
     return (
-      <div className="min-h-screen bg-slate-50 text-slate-900">
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-md">
-          <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-            <div className="flex items-center gap-2.5">
-              <img
-                src={branding.iconUrl || '/icon.svg'}
-                alt={`${branding.systemName} icon`}
-                className="h-7 w-7 rounded-lg object-contain"
-              />
-              <span className="font-display text-base font-extrabold tracking-tight text-slate-900">
-                {branding.systemName}
-              </span>
-              <span aria-hidden="true" className="text-slate-300">
-                ·
-              </span>
-              <span className="text-xs font-semibold text-slate-500">System Administrator</span>
-            </div>
-            <a
-              href="/"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              View Public Site
-            </a>
-          </div>
-        </header>
+      <div className="relative min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        <FuturisticBackdrop isDark={isDark} accentColor={branding.accentColor} />
 
-        <main className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
-          <AdminStudio
-            systemBranding={branding}
-            onBrandingUpdated={setBranding}
-            onCoursesMutated={loadRemoteCourses}
-          />
-        </main>
+        <div className="relative z-10">
+          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/80 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/80">
+            <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <img
+                  src={branding.iconUrl || '/icon.svg'}
+                  alt={`${branding.systemName} icon`}
+                  className="h-7 w-7 shrink-0 rounded-lg object-contain"
+                />
+                <span className="font-display truncate text-base font-extrabold tracking-tight text-slate-900 dark:text-white">
+                  {branding.systemName}
+                </span>
+                <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">
+                  ·
+                </span>
+                <span className="whitespace-nowrap text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  System Administrator
+                </span>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2.5">
+                <button
+                  type="button"
+                  data-testid="theme-toggle"
+                  onClick={toggleTheme}
+                  aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-white/80 text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700/80 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  {isDark ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}
+                </button>
+                <a
+                  href="/"
+                  className="flex min-h-[36px] shrink-0 items-center whitespace-nowrap rounded-xl border border-slate-200/80 bg-white/80 px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700/80 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  View Public Site
+                </a>
+              </div>
+            </div>
+          </header>
+
+          <main className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
+            <AdminStudio
+              systemBranding={branding}
+              onBrandingUpdated={setBranding}
+              onCoursesMutated={loadRemoteCourses}
+            />
+          </main>
+        </div>
       </div>
     );
   }
 
   return (
-    <>
-      <LandingPage
-        branding={branding}
-        courses={courses}
-        loadingCourses={loadingCourses}
-        onOpenInstall={() => setInstallModalOpen(true)}
-      />
+    <div className="relative min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <FuturisticBackdrop isDark={isDark} accentColor={branding.accentColor} />
+      <div className="relative z-10">
+        <LandingPage
+          branding={branding}
+          courses={courses}
+          loadingCourses={loadingCourses}
+          isDark={isDark}
+          onToggleTheme={toggleTheme}
+          onOpenInstall={() => setInstallModalOpen(true)}
+        />
+      </div>
       <AndroidInstallModal
         open={installModalOpen}
         branding={branding}
         onClose={() => setInstallModalOpen(false)}
       />
-    </>
+    </div>
   );
 }

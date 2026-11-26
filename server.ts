@@ -6,6 +6,7 @@ import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import nodemailer from 'nodemailer';
 import { createServer as createViteServer } from 'vite';
+import { syncAndroidProjectBranding } from './server/androidBranding.ts';
 import { db, type StoredUser } from './server/db.ts';
 import type {
   CertificateDesign,
@@ -298,6 +299,9 @@ function requireAdmin(req: AuthedRequest, res: Response, next: NextFunction) {
 
 async function startServer() {
   await db.init();
+  await syncAndroidProjectBranding(await db.getSystemBranding()).catch((err) =>
+    console.warn('Initial Android branding sync warning:', err)
+  );
   if (!fs.existsSync(UPLOADS_DIR)) {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   }
@@ -377,6 +381,9 @@ async function startServer() {
         updatedAt: new Date().toISOString(),
       };
       await db.saveSystemBranding(branding);
+      await syncAndroidProjectBranding(branding).catch((err) =>
+        console.warn('Android branding sync warning:', err)
+      );
       res.json({ branding });
     } catch (err) {
       console.error('Branding update error:', err);
@@ -972,7 +979,7 @@ async function startServer() {
   });
 
   // ---- Native Android Studio Project Archive ----
-  app.get('/api/android-project.zip', (_req, res) => {
+  app.get('/api/android-project.zip', async (_req, res) => {
     try {
       const androidDir = path.resolve(process.cwd(), 'android');
       const dataDir = path.resolve(process.cwd(), '.data');
@@ -980,6 +987,7 @@ async function startServer() {
         res.status(404).json({ error: 'Android project directory not found.' });
         return;
       }
+      await syncAndroidProjectBranding(await db.getSystemBranding()).catch(() => {});
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
       }
@@ -991,9 +999,10 @@ async function startServer() {
           [
             'import os, zipfile, sys',
             'src, dst = sys.argv[1], sys.argv[2]',
+            'skip = {".gradle", "build", ".idea"}',
             'with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED, allowZip64=False) as zf:',
             '  for r, dirs, files in os.walk(src):',
-            '    dirs.sort()',
+            '    dirs[:] = sorted([d for d in dirs if d not in skip])',
             '    for f in sorted(files):',
             '      p = os.path.join(r, f)',
             '      arc = os.path.relpath(p, os.path.dirname(src)).replace("\\\\", "/")',
