@@ -24,6 +24,11 @@ import type {
   UserAccount,
 } from '../types/training';
 import { getDefaultSystemBranding } from '../utils/certificateDefaults';
+import {
+  computeCourseProgressSummary,
+  getCompletedCourseIdsFromSubmissions,
+} from '../utils/courseCatalog';
+import { getCourseSubmissionPolicy } from '../utils/submissionPolicy';
 import { formatBytes, type DownloadedCoursePackage } from '../utils/offlineDb';
 import { CertificateModal } from './CertificateModal';
 import { CoursePreviewModal } from './CoursePreviewModal';
@@ -47,6 +52,7 @@ interface LearnerWorkspaceProps {
   onDownloadCourse: (course: Course) => Promise<void>;
   onRemoveDownloaded: (courseId: string) => Promise<void>;
   onOpenCoursePlayer: (courseId: string) => void;
+  onRetryCourse?: (courseId: string) => void;
   onSubmitPendingItem: (item: PendingOfflineSubmission) => Promise<void>;
   onCertificateUpdated: (cert: CertificateRecord) => void;
   onRequireAuth: () => void;
@@ -67,6 +73,7 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
   onDownloadCourse,
   onRemoveDownloaded,
   onOpenCoursePlayer,
+  onRetryCourse,
   onSubmitPendingItem,
   onCertificateUpdated,
   onRequireAuth,
@@ -103,6 +110,11 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
     });
   }, [courses, searchQuery, selectedCategory]);
 
+  const completedCourseIds = useMemo(
+    () => getCompletedCourseIdsFromSubmissions(submittedCourses),
+    [submittedCourses]
+  );
+
   const downloadedList = useMemo(() => {
     return Object.values(downloadedMap).sort((a, b) =>
       b.downloadedAt.localeCompare(a.downloadedAt)
@@ -111,13 +123,13 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
 
   const filteredDownloaded = useMemo(() => {
     return downloadedList.filter((pkg) => {
-      const prog = progressMap[pkg.courseId];
-      const status = prog?.status ?? 'not_started';
+      const summary = computeCourseProgressSummary(pkg.course, progressMap, completedCourseIds);
+      const status = summary.status;
       if (downloadedFilter === 'not_started') return status === 'not_started';
       if (downloadedFilter === 'in_progress') return status === 'in_progress' || status === 'completed';
       return true;
     });
-  }, [downloadedList, progressMap, downloadedFilter]);
+  }, [downloadedList, progressMap, downloadedFilter, completedCourseIds]);
 
   const filteredSubmitted = useMemo(() => {
     if (submittedFilter === 'all') return submittedCourses;
@@ -192,12 +204,17 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
         updatedAt: '',
       };
 
+    const policy = getCourseSubmissionPolicy(
+      submittedCourses,
+      inspectingSubmission.courseId
+    );
     return (
       <CourseSummaryView
         course={course}
         questionResults={inspectingSubmission.questionResults}
         quizResults={inspectingSubmission.quizResults}
         isAlreadySubmitted
+        isRetakeBlocked={policy.isRetakeBlocked}
         onBack={() => setInspectingSubmission(null)}
       />
     );
@@ -271,6 +288,7 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {filteredAvailable.map((course) => {
+                const policy = getCourseSubmissionPolicy(submittedCourses, course._id);
                 const isDownloaded = Boolean(downloadedMap[course._id]);
                 const pct = downloadProgress[course._id];
                 const lessonCount = course.modules.filter((m) => m.kind === 'lesson').length;
@@ -315,7 +333,16 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
                             <Eye className="h-4 w-4" />
                             <span>Preview</span>
                           </button>
-                          {isDownloaded ? (
+                          {policy.isRetakeBlocked ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="flex min-h-[44px] flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 text-xs font-semibold text-red-700 opacity-85 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300"
+                            >
+                              <XCircle className="h-4 w-4" />
+                              <span>Retake Locked</span>
+                            </button>
+                          ) : isDownloaded ? (
                             <button
                               type="button"
                               onClick={() => onOpenCoursePlayer(course._id)}
@@ -418,10 +445,16 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {filteredDownloaded.map((pkg) => {
                 const prog = progressMap[pkg.courseId];
-                const totalMods = Math.max(1, pkg.course.modules.length);
-                const doneCount = prog?.completedModuleIds.length ?? 0;
-                const pct = Math.min(100, Math.round((doneCount / totalMods) * 100));
-                const status = prog?.status ?? 'not_started';
+                const policy = getCourseSubmissionPolicy(submittedCourses, pkg.courseId);
+                const summary = computeCourseProgressSummary(
+                  pkg.course,
+                  progressMap,
+                  completedCourseIds
+                );
+                const totalMods = Math.max(1, summary.totalModules);
+                const doneCount = summary.completedModules;
+                const pct = summary.percent;
+                const status = summary.status;
                 const currentModTitle =
                   pkg.course.modules[prog?.currentModuleIndex ?? 0]?.title ?? 'Module 1';
 
@@ -440,14 +473,18 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
                       <div className="flex items-center justify-between gap-2 text-xs">
                         <span
                           className={`font-semibold ${
-                            status === 'not_started'
+                            policy.isRetakeBlocked
+                              ? 'text-red-700 dark:text-red-400'
+                              : status === 'not_started'
                               ? 'text-slate-600 dark:text-slate-400'
                               : status === 'completed'
                               ? 'text-emerald-700 dark:text-emerald-400'
                               : 'text-blue-700 dark:text-sky-400'
                           }`}
                         >
-                          {status === 'not_started'
+                          {policy.isRetakeBlocked
+                            ? 'Retake Locked'
+                            : status === 'not_started'
                             ? 'Not Started'
                             : status === 'completed'
                             ? 'Completed'
@@ -465,7 +502,9 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
                       <div className="mt-4 space-y-1.5">
                         <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
                           <span className="truncate pr-2">
-                            {status === 'not_started'
+                            {policy.isRetakeBlocked
+                              ? 'Rejected without retry · No certificate'
+                              : status === 'not_started'
                               ? `${pkg.course.modules.length} modules ready`
                               : `Current: ${currentModTitle}`}
                           </span>
@@ -476,7 +515,9 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
                         <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                           <div
                             className={`h-full transition-all ${
-                              status === 'completed'
+                              policy.isRetakeBlocked
+                                ? 'bg-red-600 dark:bg-red-500'
+                                : status === 'completed'
                                 ? 'bg-emerald-600 dark:bg-emerald-500'
                                 : 'bg-blue-700 dark:bg-sky-500'
                             }`}
@@ -486,20 +527,40 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
                       </div>
 
                       <div className="mt-5 flex gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
-                        <button
-                          type="button"
-                          onClick={() => onOpenCoursePlayer(pkg.courseId)}
-                          className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
-                        >
-                          <Play className="h-4 w-4" />
-                          <span>
-                            {status === 'not_started'
-                              ? 'Start Course'
-                              : status === 'completed'
-                              ? 'Review & Submit'
-                              : 'Resume Course'}
-                          </span>
-                        </button>
+                        {policy.isRetakeBlocked ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="flex min-h-[44px] flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 text-xs font-semibold text-red-700 opacity-85 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300"
+                          >
+                            <XCircle className="h-4 w-4" />
+                            <span>Retake Locked · No Certificate</span>
+                          </button>
+                        ) : policy.canRetryRejected && status === 'completed' && onRetryCourse ? (
+                          <button
+                            type="button"
+                            onClick={() => onRetryCourse(pkg.courseId)}
+                            className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 text-sm font-semibold text-white hover:bg-amber-700"
+                          >
+                            <Play className="h-4 w-4" />
+                            <span>Retry Course</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onOpenCoursePlayer(pkg.courseId)}
+                            className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+                          >
+                            <Play className="h-4 w-4" />
+                            <span>
+                              {status === 'not_started'
+                                ? 'Start Course'
+                                : status === 'completed'
+                                ? 'Review & Submit'
+                                : 'Resume Course'}
+                            </span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => onRemoveDownloaded(pkg.courseId)}
@@ -676,7 +737,9 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
                         ) : sub.status === 'rejected' ? (
                           <span className="inline-flex items-center gap-1 font-semibold text-red-700 dark:text-red-400">
                             <XCircle className="h-4 w-4" />
-                            Rejected
+                            {sub.allowRetry === false
+                              ? 'Rejected · Retake Not Allowed'
+                              : 'Rejected · Retry Allowed'}
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400">

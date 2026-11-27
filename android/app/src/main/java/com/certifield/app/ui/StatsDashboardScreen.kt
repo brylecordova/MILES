@@ -167,7 +167,7 @@ object LearnerStatsCalculator {
         val avgQuizRetries = if (retryRows.isEmpty()) 1.0
         else (retryRows.map { it.avgQuizRetries }.average() * 10.0).roundToInt() / 10.0
 
-        val completedCourseIds = (submittedCourses.filter { it.passed }.map { it.courseId } +
+        val completedCourseIds = (submittedCourses.filter { it.completed || it.passed }.map { it.courseId } +
             pendingSubmissions.filter { it.passed }.map { it.courseId } +
             progressMap.values.filter { it.status == "completed" }.map { it.courseId }).toSet()
 

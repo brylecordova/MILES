@@ -42,7 +42,11 @@ async function apiFetch<T>(
     headers.set('Authorization', `Bearer ${adminToken}`);
   }
 
-  const res = await fetch(path, { ...options, headers });
+  const res = await fetch(path, {
+    ...options,
+    cache: options.cache ?? 'no-store',
+    headers,
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error((data as { error?: string }).error || `Request failed (${res.status})`);
@@ -158,10 +162,15 @@ export const api = {
     apiFetch<{ submissions: CourseSubmission[] }>('/api/admin/submissions', {}, 'admin'),
   getAdminAnalytics: () =>
     apiFetch<{ report: AdminAnalyticsReport }>('/api/admin/analytics', {}, 'admin'),
-  reviewSubmission: (id: string, status: 'approved' | 'rejected', adminFeedback?: string) =>
+  reviewSubmission: (
+    id: string,
+    status: 'approved' | 'rejected',
+    adminFeedback?: string,
+    allowRetry?: boolean
+  ) =>
     apiFetch<{ submission: CourseSubmission; certificate?: CertificateRecord }>(
       `/api/admin/submissions/${id}/review`,
-      { method: 'PATCH', body: JSON.stringify({ status, adminFeedback }) },
+      { method: 'PATCH', body: JSON.stringify({ status, adminFeedback, allowRetry }) },
       'admin'
     ),
 

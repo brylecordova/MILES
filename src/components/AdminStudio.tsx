@@ -58,6 +58,10 @@ import {
   DEFAULT_SYSTEM_ICON_URL,
   getDefaultCertificateDesign,
 } from '../utils/certificateDefaults';
+import {
+  mergeIncomingSubmission,
+  reconcileFetchedSubmissions,
+} from '../utils/realtimeSubmissions';
 import { AdminAnalyticsDashboard } from './AdminAnalyticsDashboard';
 import { AndroidIcon } from './AndroidIcon';
 import { CertificateDesigner } from './CertificateDesigner';
@@ -168,6 +172,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   const [pendingReviewDecision, setPendingReviewDecision] = useState<'approved' | 'rejected' | null>(
     null
   );
+  const [rejectAllowRetry, setRejectAllowRetry] = useState(true);
   const [reviewResultBanner, setReviewResultBanner] = useState<{
     type: 'approved' | 'rejected' | 'error';
     message: string;
@@ -184,8 +189,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   const [realtimeToast, setRealtimeToast] = useState<{
     id: string;
     submission: CourseSubmission;
+    unreadCount: number;
   } | null>(null);
+  const [recentArrivalIds, setRecentArrivalIds] = useState<string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
+  const knownSubmissionIdsRef = useRef<Set<string>>(new Set());
+  const hasLoadedSubmissionsRef = useRef(false);
+  const syncInFlightRef = useRef(false);
 
   // System Branding & App Distribution State
   const [brandingDraft, setBrandingDraft] = useState<Omit<SystemBranding, 'updatedAt'>>({
@@ -252,9 +263,85 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     if (!realtimeToast) return;
     const timer = window.setTimeout(() => {
       setRealtimeToast((prev) => (prev?.id === realtimeToast.id ? null : prev));
-    }, 12000);
+    }, 14000);
     return () => window.clearTimeout(timer);
   }, [realtimeToast]);
+
+  const notifyNewSubmissions = (newSubs: CourseSubmission[]) => {
+    if (newSubs.length === 0) return;
+    const latest = newSubs[0];
+    setRecentArrivalIds((prev) => {
+      const next = [...newSubs.map((s) => s._id), ...prev];
+      return Array.from(new Set(next)).slice(0, 20);
+    });
+    setRealtimeToast((prev) => ({
+      id: `${latest._id}-${Date.now()}`,
+      submission: latest,
+      unreadCount: (prev?.unreadCount ?? 0) + newSubs.length,
+    }));
+    api
+      .getAdminAnalytics()
+      .then((res) => setAnalyticsReport(res.report))
+      .catch(() => {});
+    api
+      .listAdminCertificates()
+      .then((res) => setCertificates(res.certificates))
+      .catch(() => {});
+  };
+
+  const handleIncomingSubmissionEvent = (
+    eventType: 'submission:created' | 'submission:updated',
+    submission: CourseSubmission
+  ) => {
+    if (eventType === 'submission:created') {
+      const isBrandNew = !knownSubmissionIdsRef.current.has(submission._id);
+      knownSubmissionIdsRef.current.add(submission._id);
+      hasLoadedSubmissionsRef.current = true;
+      setSubmissions((prev) => mergeIncomingSubmission(prev, submission).next);
+      if (isBrandNew) {
+        notifyNewSubmissions([submission]);
+      }
+      return;
+    }
+
+    knownSubmissionIdsRef.current.add(submission._id);
+    setSubmissions((prev) => mergeIncomingSubmission(prev, submission).next);
+    setSelectedSub((prev) => (prev && prev._id === submission._id ? submission : prev));
+    api
+      .getAdminAnalytics()
+      .then((res) => setAnalyticsReport(res.report))
+      .catch(() => {});
+    api
+      .listAdminCertificates()
+      .then((res) => setCertificates(res.certificates))
+      .catch(() => {});
+  };
+
+  const syncSubmissionsSilently = async () => {
+    if (syncInFlightRef.current || !getAdminToken()) return;
+    syncInFlightRef.current = true;
+    try {
+      const sRes = await api.listAllSubmissions();
+      const wasLoaded = hasLoadedSubmissionsRef.current;
+      const { next, newlyDetected } = reconcileFetchedSubmissions(
+        sRes.submissions,
+        knownSubmissionIdsRef.current,
+        wasLoaded
+      );
+      hasLoadedSubmissionsRef.current = true;
+      setSubmissions(next);
+      setSelectedSub((prev) =>
+        prev ? next.find((s) => s._id === prev._id) ?? prev : prev
+      );
+      if (newlyDetected.length > 0) {
+        notifyNewSubmissions(newlyDetected);
+      }
+    } catch {
+      // Ignore transient network errors during background sync
+    } finally {
+      syncInFlightRef.current = false;
+    }
+  };
 
   useEffect(() => {
     if (!authed) {
@@ -262,14 +349,76 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
         wsRef.current.close();
         wsRef.current = null;
       }
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+      }
+      knownSubmissionIdsRef.current.clear();
+      hasLoadedSubmissionsRef.current = false;
+      setRealtimeToast(null);
+      setRecentArrivalIds([]);
       return;
     }
 
     let disposed = false;
-    let reconnectTimer: number | null = null;
-    let retryDelayMs = 1500;
+    let wsReconnectTimer: number | null = null;
+    let sseReconnectTimer: number | null = null;
+    let wsRetryDelayMs = 1500;
+    let sseRetryDelayMs = 1500;
 
-    const connect = () => {
+    const handleRawEvent = (raw: string) => {
+      try {
+        const msg = JSON.parse(raw || '{}') as {
+          type?: string;
+          submission?: CourseSubmission;
+        };
+        if (
+          (msg.type === 'submission:created' || msg.type === 'submission:updated') &&
+          msg.submission
+        ) {
+          handleIncomingSubmissionEvent(msg.type, msg.submission);
+        }
+      } catch {
+        // Ignore malformed event payloads
+      }
+    };
+
+    const connectSse = () => {
+      if (disposed || typeof EventSource === 'undefined') return;
+      const token = getAdminToken();
+      if (!token) return;
+
+      const sse = new EventSource(
+        `/api/admin/events?token=${encodeURIComponent(token)}`
+      );
+      sseRef.current = sse;
+
+      sse.addEventListener('connected', () => {
+        sseRetryDelayMs = 1500;
+        void syncSubmissionsSilently();
+      });
+
+      sse.addEventListener('submission:created', (event) => {
+        handleRawEvent(String((event as MessageEvent).data || '{}'));
+      });
+
+      sse.addEventListener('submission:updated', (event) => {
+        handleRawEvent(String((event as MessageEvent).data || '{}'));
+      });
+
+      sse.onerror = () => {
+        sse.close();
+        if (sseRef.current === sse) {
+          sseRef.current = null;
+        }
+        if (!disposed && getAdminToken()) {
+          sseReconnectTimer = window.setTimeout(connectSse, sseRetryDelayMs);
+          sseRetryDelayMs = Math.min(10000, sseRetryDelayMs * 2);
+        }
+      };
+    };
+
+    const connectWs = () => {
       if (disposed) return;
       const token = getAdminToken();
       if (!token) return;
@@ -280,41 +429,12 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
       wsRef.current = ws;
 
       ws.onopen = () => {
-        retryDelayMs = 1500;
+        wsRetryDelayMs = 1500;
+        void syncSubmissionsSilently();
       };
 
       ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(String(event.data || '{}')) as {
-            type?: string;
-            submission?: CourseSubmission;
-          };
-          if (msg.type === 'submission:created' && msg.submission) {
-            const incoming = msg.submission;
-            setSubmissions((prev) =>
-              prev.some((s) => s._id === incoming._id) ? prev : [incoming, ...prev]
-            );
-            setRealtimeToast({ id: incoming._id, submission: incoming });
-            api
-              .getAdminAnalytics()
-              .then((res) => setAnalyticsReport(res.report))
-              .catch(() => {});
-          } else if (msg.type === 'submission:updated' && msg.submission) {
-            const updated = msg.submission;
-            setSubmissions((prev) =>
-              prev.some((s) => s._id === updated._id)
-                ? prev.map((s) => (s._id === updated._id ? updated : s))
-                : [updated, ...prev]
-            );
-            setSelectedSub((prev) => (prev && prev._id === updated._id ? updated : prev));
-            api
-              .getAdminAnalytics()
-              .then((res) => setAnalyticsReport(res.report))
-              .catch(() => {});
-          }
-        } catch {
-          // Ignore malformed WS messages
-        }
+        handleRawEvent(String(event.data || '{}'));
       };
 
       ws.onclose = () => {
@@ -322,22 +442,47 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           wsRef.current = null;
         }
         if (!disposed && getAdminToken()) {
-          reconnectTimer = window.setTimeout(connect, retryDelayMs);
-          retryDelayMs = Math.min(10000, retryDelayMs * 2);
+          wsReconnectTimer = window.setTimeout(connectWs, wsRetryDelayMs);
+          wsRetryDelayMs = Math.min(10000, wsRetryDelayMs * 2);
         }
       };
     };
 
-    connect();
+    connectSse();
+    connectWs();
+
+    const pollInterval = window.setInterval(() => {
+      if (!disposed && document.visibilityState !== 'hidden') {
+        void syncSubmissionsSilently();
+      }
+    }, 3000);
+
+    const handleWakeSync = () => {
+      if (!disposed && document.visibilityState === 'visible') {
+        void syncSubmissionsSilently();
+      }
+    };
+    window.addEventListener('focus', handleWakeSync);
+    document.addEventListener('visibilitychange', handleWakeSync);
 
     return () => {
       disposed = true;
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
+      window.clearInterval(pollInterval);
+      window.removeEventListener('focus', handleWakeSync);
+      document.removeEventListener('visibilitychange', handleWakeSync);
+      if (wsReconnectTimer !== null) {
+        window.clearTimeout(wsReconnectTimer);
+      }
+      if (sseReconnectTimer !== null) {
+        window.clearTimeout(sseReconnectTimer);
       }
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
+      }
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
       }
     };
   }, [authed]);
@@ -353,9 +498,18 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
         api.listAdminCertificates().catch(() => ({ certificates: [] as CertificateRecord[] })),
       ]);
       setCourses(cRes.courses);
-      setSubmissions(sRes.submissions);
+      const { next, newlyDetected } = reconcileFetchedSubmissions(
+        sRes.submissions,
+        knownSubmissionIdsRef.current,
+        hasLoadedSubmissionsRef.current
+      );
+      hasLoadedSubmissionsRef.current = true;
+      setSubmissions(next);
       setAnalyticsReport(aRes.report);
       setCertificates(certRes.certificates);
+      if (newlyDetected.length > 0) {
+        notifyNewSubmissions(newlyDetected);
+      }
       if (pRes.adminName) {
         setAdminName(pRes.adminName);
         setAdminNameDraft(pRes.adminName);
@@ -551,7 +705,12 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     setReviewLoading(true);
     setReviewResultBanner(null);
     try {
-      const res = await api.reviewSubmission(selectedSub._id, decision, reviewFeedback);
+      const res = await api.reviewSubmission(
+        selectedSub._id,
+        decision,
+        reviewFeedback,
+        decision === 'rejected' ? rejectAllowRetry : undefined
+      );
       setSelectedSub(res.submission);
       setPendingReviewDecision(null);
       setSubmissions((prev) =>
@@ -581,7 +740,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           certificateCode: certCode,
         });
       } else {
-        const msg = `Rejected ${res.submission.userName}'s submission for "${res.submission.courseTitle}". No certificate was issued.`;
+        setCertificates((prev) =>
+          prev.filter((c) => c.submissionId !== res.submission._id)
+        );
+        const retryMsg =
+          res.submission.allowRetry === false
+            ? 'Retaking the course is blocked and no certificate will be issued.'
+            : 'Learner is allowed to retry the course.';
+        const msg = `Rejected ${res.submission.userName}'s submission for "${res.submission.courseTitle}". ${retryMsg}`;
         setReviewResultBanner({
           type: 'rejected',
           message: msg,
@@ -1564,30 +1730,6 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-50 p-2.5 dark:bg-slate-950/60">
-                        <span className="mr-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                          Add block:
-                        </span>
-                        {(
-                          [
-                            ['header', 'Header'],
-                            ['body', 'Body Text'],
-                            ['bullets', 'Bullets'],
-                            ['image', 'Image'],
-                            ['video', 'Video'],
-                          ] as const
-                        ).map(([bType, label]) => (
-                          <button
-                            key={bType}
-                            type="button"
-                            onClick={() => addLessonBlock(modIdx, mod, bType, false)}
-                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                          >
-                            + {label}
-                          </button>
-                        ))}
-                      </div>
-
                       <div className="space-y-3">
                         {mod.blocks.map((blk, blkIdx) => (
                           <div
@@ -1830,6 +1972,30 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                               </div>
                             )}
                           </div>
+                        ))}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-50 p-2.5 dark:bg-slate-950/60">
+                        <span className="mr-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          Add block:
+                        </span>
+                        {(
+                          [
+                            ['header', 'Header'],
+                            ['body', 'Body Text'],
+                            ['bullets', 'Bullets'],
+                            ['image', 'Image'],
+                            ['video', 'Video'],
+                          ] as const
+                        ).map(([bType, label]) => (
+                          <button
+                            key={bType}
+                            type="button"
+                            onClick={() => addLessonBlock(modIdx, mod, bType, false)}
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                          >
+                            + {label}
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -2233,22 +2399,40 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             </p>
                           </div>
 
-                          {isPending ? (
-                            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100/90 px-2.5 py-1 text-xs font-bold text-amber-900 dark:border-amber-700/70 dark:bg-amber-950/80 dark:text-amber-200">
-                              <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                              Pending Approval
-                            </span>
-                          ) : isApproved ? (
-                            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              Approved
-                            </span>
-                          ) : (
-                            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-bold text-red-800 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300">
-                              <XCircle className="h-3.5 w-3.5" />
-                              Rejected
-                            </span>
-                          )}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {recentArrivalIds.includes(sub._id) && (
+                              <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-800 dark:border-sky-700/70 dark:bg-sky-950/70 dark:text-sky-200">
+                                New
+                              </span>
+                            )}
+                            {isPending ? (
+                              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100/90 px-2.5 py-1 text-xs font-bold text-amber-900 dark:border-amber-700/70 dark:bg-amber-950/80 dark:text-amber-200">
+                                <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                                Pending Approval
+                              </span>
+                            ) : isApproved ? (
+                              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                Approved
+                              </span>
+                            ) : (
+                              <>
+                                <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-bold text-red-800 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300">
+                                  <XCircle className="h-3.5 w-3.5" />
+                                  Rejected
+                                </span>
+                                <span
+                                  className={`inline-flex shrink-0 items-center rounded-md border px-2 py-1 text-[11px] font-semibold ${
+                                    sub.allowRetry === false
+                                      ? 'border-red-200 bg-red-100/80 text-red-900 dark:border-red-900/70 dark:bg-red-950/80 dark:text-red-200'
+                                      : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-200'
+                                  }`}
+                                >
+                                  {sub.allowRetry === false ? 'Retake Locked' : 'Retry Allowed'}
+                                </span>
+                              </>
+                            )}
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50/90 p-3 text-xs sm:grid-cols-4 dark:bg-slate-950/60">
@@ -2301,7 +2485,9 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                           type="button"
                           onClick={() => {
                             setSelectedSub(sub);
+                            setRecentArrivalIds((prev) => prev.filter((id) => id !== sub._id));
                             setReviewFeedback(sub.adminFeedback ?? '');
+                            setRejectAllowRetry(sub.allowRetry !== false);
                             setPendingReviewDecision(null);
                             setReviewResultBanner(null);
                           }}
@@ -2311,7 +2497,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                               : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
                           }`}
                         >
-                          {isPending ? 'Review & Issue Certificate' : 'Inspect Review Details'}
+                          {isPending ? 'Review' : 'Inspect Review Details'}
                         </button>
                       </div>
                     </article>
@@ -2365,7 +2551,11 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   ) : (
                     <>
                       <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                      <span>Submission Rejected — Certificate was not issued.</span>
+                      <span>
+                        {selectedSub.allowRetry === false
+                          ? 'Submission Rejected — Retake disabled (learner cannot retake this course or receive a certificate).'
+                          : 'Submission Rejected — Retry allowed (learner may retake the course). No certificate was issued.'}
+                      </span>
                     </>
                   )}
                 </span>
@@ -2524,70 +2714,134 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
 
                 {pendingReviewDecision ? (
                   <div
-                    className={`grid gap-4 rounded-xl border p-4 sm:grid-cols-[1fr_auto] sm:items-center ${
+                    className={`space-y-4 rounded-xl border p-4 ${
                       pendingReviewDecision === 'approved'
                         ? 'border-emerald-300 bg-emerald-50/90 dark:border-emerald-800 dark:bg-emerald-950/50'
                         : 'border-red-300 bg-red-50/90 dark:border-red-800 dark:bg-red-950/50'
                     }`}
                   >
-                    <div className="text-xs">
-                      <p className="font-bold text-slate-900 dark:text-white">
-                        {pendingReviewDecision === 'approved'
-                          ? `Confirm Approval & Certificate Issuance for ${selectedSub.userName}?`
-                          : `Confirm Rejection of ${selectedSub.userName}'s Submission?`}
-                      </p>
-                      <p className="mt-0.5 text-slate-700 dark:text-slate-300">
-                        {pendingReviewDecision === 'approved'
-                          ? `An official verifiable certificate (${selectedSub.certificateTitle}) will be issued immediately.`
-                          : 'The learner will see your reviewer feedback and no certificate will be issued.'}
-                      </p>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-xs">
+                        <p className="font-bold text-slate-900 dark:text-white">
+                          {pendingReviewDecision === 'approved'
+                            ? `Confirm Approval & Certificate Issuance for ${selectedSub.userName}?`
+                            : `Confirm Rejection of ${selectedSub.userName}'s Submission?`}
+                        </p>
+                        <p className="mt-0.5 text-slate-700 dark:text-slate-300">
+                          {pendingReviewDecision === 'approved'
+                            ? `An official verifiable certificate (${selectedSub.certificateTitle}) will be issued immediately.`
+                            : 'Choose whether the learner is permitted to retake this course after rejection.'}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={reviewLoading}
+                          onClick={() => handleReviewDecision(pendingReviewDecision)}
+                          className={`min-h-[40px] rounded-xl px-4 text-xs font-bold text-white disabled:opacity-60 ${
+                            pendingReviewDecision === 'approved'
+                              ? 'bg-emerald-700 hover:bg-emerald-800'
+                              : 'bg-red-700 hover:bg-red-800'
+                          }`}
+                        >
+                          {reviewLoading
+                            ? 'Saving...'
+                            : pendingReviewDecision === 'approved'
+                            ? 'Confirm Approve & Issue'
+                            : 'Confirm Reject'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={reviewLoading}
+                          onClick={() => setPendingReviewDecision(null)}
+                          className="min-h-[40px] rounded-xl border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex shrink-0 flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={reviewLoading}
-                        onClick={() => handleReviewDecision(pendingReviewDecision)}
-                        className={`min-h-[40px] rounded-xl px-4 text-xs font-bold text-white disabled:opacity-60 ${
-                          pendingReviewDecision === 'approved'
-                            ? 'bg-emerald-700 hover:bg-emerald-800'
-                            : 'bg-red-700 hover:bg-red-800'
-                        }`}
-                      >
-                        {reviewLoading
-                          ? 'Saving...'
-                          : pendingReviewDecision === 'approved'
-                          ? 'Confirm Approve & Issue'
-                          : 'Confirm Reject'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={reviewLoading}
-                        onClick={() => setPendingReviewDecision(null)}
-                        className="min-h-[40px] rounded-xl border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                      >
-                        Cancel
-                      </button>
-                    </div>
+
+                    {pendingReviewDecision === 'rejected' && (
+                      <div className="grid gap-2.5 sm:grid-cols-2">
+                        <label
+                          className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-xs transition-colors ${
+                            rejectAllowRetry
+                              ? 'border-blue-600 bg-white shadow-xs dark:border-sky-400 dark:bg-slate-900'
+                              : 'border-slate-200 bg-white/70 hover:bg-white dark:border-slate-800 dark:bg-slate-900/60'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="reject-retry-policy"
+                            checked={rejectAllowRetry}
+                            onChange={() => setRejectAllowRetry(true)}
+                            className="mt-0.5 h-4 w-4 accent-blue-700 dark:accent-sky-400"
+                          />
+                          <div>
+                            <p className="font-bold text-slate-900 dark:text-white">
+                              Allow Learner to Retry Course
+                            </p>
+                            <p className="mt-0.5 text-slate-600 dark:text-slate-300">
+                              Learner can retake the lessons and quizzes to submit a new attempt.
+                            </p>
+                          </div>
+                        </label>
+                        <label
+                          className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-xs transition-colors ${
+                            !rejectAllowRetry
+                              ? 'border-red-600 bg-white shadow-xs dark:border-red-400 dark:bg-slate-900'
+                              : 'border-slate-200 bg-white/70 hover:bg-white dark:border-slate-800 dark:bg-slate-900/60'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="reject-retry-policy"
+                            checked={!rejectAllowRetry}
+                            onChange={() => setRejectAllowRetry(false)}
+                            className="mt-0.5 h-4 w-4 accent-red-700 dark:accent-red-400"
+                          />
+                          <div>
+                            <p className="font-bold text-slate-900 dark:text-white">
+                              Do Not Allow Retry (Lock Course)
+                            </p>
+                            <p className="mt-0.5 text-slate-600 dark:text-slate-300">
+                              Learner cannot undergo this course again and will not receive a certificate.
+                            </p>
+                          </div>
+                        </label>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-3">
                     <button
                       type="button"
-                      disabled={reviewLoading}
+                      disabled={reviewLoading || selectedSub.status === 'approved'}
                       onClick={() => setPendingReviewDecision('approved')}
-                      className="flex min-h-[44px] items-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+                      className="flex min-h-[44px] items-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <CheckCircle2 className="h-4 w-4" />
-                      <span>Approve &amp; Issue Certificate</span>
+                      <span>
+                        {selectedSub.status === 'approved'
+                          ? 'Approved'
+                          : 'Approve & Issue Certificate'}
+                      </span>
                     </button>
                     <button
                       type="button"
-                      disabled={reviewLoading}
-                      onClick={() => setPendingReviewDecision('rejected')}
-                      className="flex min-h-[44px] items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-900/50"
+                      disabled={reviewLoading || selectedSub.status === 'rejected'}
+                      onClick={() => {
+                        setRejectAllowRetry(selectedSub.allowRetry !== false);
+                        setPendingReviewDecision('rejected');
+                      }}
+                      className="flex min-h-[44px] items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-900/50"
                     >
                       <XCircle className="h-4 w-4" />
-                      <span>Reject Submission</span>
+                      <span>
+                        {selectedSub.status === 'rejected'
+                          ? 'Rejected'
+                          : 'Reject Submission'}
+                      </span>
                     </button>
                   </div>
                 )}
@@ -3050,58 +3304,78 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
       }}
     />
 
-    {realtimeToast && (
-      <div
-        role="status"
-        aria-live="polite"
-        data-testid="realtime-submission-toast"
-        className="fixed right-4 bottom-4 z-50 w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-blue-200 bg-white/95 p-3.5 shadow-xl backdrop-blur-xl dark:border-sky-800/70 dark:bg-slate-900/95"
-      >
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-sky-950/70 dark:text-sky-400">
-            <Bell className="h-4 w-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-slate-900 dark:text-white">
-              New Submission Received
-            </p>
-            <p className="mt-0.5 truncate text-xs text-slate-600 dark:text-slate-300">
-              {realtimeToast.submission.userName} · {realtimeToast.submission.courseTitle}
-            </p>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="font-mono-tabular rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900 dark:bg-amber-950/70 dark:text-amber-200">
-                Score {realtimeToast.submission.overallScore}%
+    <AnimatePresence>
+      {realtimeToast && (
+        <motion.div
+          key={realtimeToast.id}
+          initial={{ opacity: 0, y: 20, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 16, scale: 0.96 }}
+          transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+          role="status"
+          aria-live="polite"
+          data-testid="realtime-submission-toast"
+          className="fixed right-4 bottom-4 z-50 w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-blue-200 bg-white/95 p-3.5 shadow-xl backdrop-blur-xl dark:border-sky-800/70 dark:bg-slate-900/95"
+        >
+          <div className="flex items-start gap-3">
+            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-sky-950/70 dark:text-sky-400">
+              <Bell className="h-4 w-4" />
+              <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-75 dark:bg-sky-400" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-600 dark:bg-sky-400" />
               </span>
-              <button
-                type="button"
-                onClick={() => {
-                  const sub = realtimeToast.submission;
-                  setAdminTab('submissions');
-                  setDraft(null);
-                  setSubFilter('all');
-                  setSelectedSub(sub);
-                  setReviewFeedback(sub.adminFeedback ?? '');
-                  setPendingReviewDecision(null);
-                  setReviewResultBanner(null);
-                  setRealtimeToast(null);
-                }}
-                className="rounded-lg bg-blue-700 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
-              >
-                View
-              </button>
             </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="text-xs font-bold text-slate-900 dark:text-white">
+                  New Submission Received
+                </p>
+                {realtimeToast.unreadCount > 1 && (
+                  <span className="font-mono-tabular rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 dark:bg-sky-950 dark:text-sky-300">
+                    +{realtimeToast.unreadCount - 1} more
+                  </span>
+                )}
+              </div>
+              <p className="mt-0.5 truncate text-xs text-slate-600 dark:text-slate-300">
+                {realtimeToast.submission.userName} · {realtimeToast.submission.courseTitle}
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="font-mono-tabular rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900 dark:bg-amber-950/70 dark:text-amber-200">
+                  Score {realtimeToast.submission.overallScore}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sub = realtimeToast.submission;
+                    setAdminTab('submissions');
+                    setDraft(null);
+                    setSubFilter('all');
+                    setSelectedSub(sub);
+                    setRecentArrivalIds((prev) => prev.filter((id) => id !== sub._id));
+                    setReviewFeedback(sub.adminFeedback ?? '');
+                    setRejectAllowRetry(sub.allowRetry !== false);
+                    setPendingReviewDecision(null);
+                    setReviewResultBanner(null);
+                    setRealtimeToast(null);
+                  }}
+                  className="rounded-lg bg-blue-700 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+                >
+                  View
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRealtimeToast(null)}
+              aria-label="Dismiss new submission notification"
+              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setRealtimeToast(null)}
-            aria-label="Dismiss new submission notification"
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    )}
+        </motion.div>
+      )}
+    </AnimatePresence>
     </MotionConfig>
   );
 };

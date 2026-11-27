@@ -191,7 +191,9 @@ export interface CourseSubmission {
   userEmail: string;
   overallScore: number;
   passed: boolean;
+  completed?: boolean;
   status: SubmissionStatus;
+  allowRetry?: boolean;
   adminFeedback?: string;
   reviewedAt?: string;
   submittedAt: string;

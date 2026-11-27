@@ -9,6 +9,7 @@ interface CourseSummaryViewProps {
   quizResults: QuizAttemptSummary[];
   isOffline?: boolean;
   isAlreadySubmitted?: boolean;
+  isRetakeBlocked?: boolean;
   isPendingQueue?: boolean;
   submitting?: boolean;
   submitError?: string | null;
@@ -23,6 +24,7 @@ export const CourseSummaryView: React.FC<CourseSummaryViewProps> = ({
   quizResults,
   isOffline = false,
   isAlreadySubmitted = false,
+  isRetakeBlocked = false,
   isPendingQueue = false,
   submitting = false,
   submitError = null,
@@ -259,6 +261,15 @@ export const CourseSummaryView: React.FC<CourseSummaryViewProps> = ({
           ))}
         </div>
       </section>
+
+      {isAlreadySubmitted && isRetakeBlocked && (
+        <div className="mt-6 rounded-2xl border border-red-200 bg-red-50/90 p-5 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-200">
+          <p className="font-bold">Course Locked — No Certificate Issued</p>
+          <p className="mt-1 text-xs">
+            This submission was rejected by the administrator without retry permission. You cannot undergo this course again or receive a certificate.
+          </p>
+        </div>
+      )}
 
       {!isAlreadySubmitted && (
         <div className="mt-6 rounded-2xl border border-slate-200/80 bg-white/85 p-5 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/75">

@@ -37,6 +37,10 @@ import {
   toPublicCourseWithRatings,
   validateRatingValue,
 } from './src/utils/courseRating.ts';
+import {
+  getCourseSubmissionPolicy,
+  normalizeReviewAllowRetry,
+} from './src/utils/submissionPolicy.ts';
 
 const PORT = 3000;
 
@@ -347,12 +351,26 @@ async function startServer() {
   const httpServer = http.createServer(app);
   const wss = new WebSocketServer({ noServer: true });
   const adminSockets = new Set<WebSocket>();
+  const adminEventStreams = new Set<express.Response>();
 
   function broadcastToAdmins(event: Record<string, unknown>) {
     const serialized = JSON.stringify(event);
+    const eventName = typeof event.type === 'string' ? event.type : 'message';
     for (const client of adminSockets) {
       if (client.readyState === WebSocket.OPEN) {
         client.send(serialized);
+      }
+    }
+    const ssePayload = `event: ${eventName}\ndata: ${serialized}\n\n`;
+    for (const stream of adminEventStreams) {
+      if (!stream.writableEnded) {
+        try {
+          stream.write(ssePayload);
+        } catch {
+          adminEventStreams.delete(stream);
+        }
+      } else {
+        adminEventStreams.delete(stream);
       }
     }
   }
@@ -373,8 +391,19 @@ async function startServer() {
       }
       wss.handleUpgrade(req, socket, head, (ws) => {
         adminSockets.add(ws);
-        ws.on('close', () => adminSockets.delete(ws));
-        ws.on('error', () => adminSockets.delete(ws));
+        const pingInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.ping();
+          }
+        }, 20000);
+        ws.on('close', () => {
+          clearInterval(pingInterval);
+          adminSockets.delete(ws);
+        });
+        ws.on('error', () => {
+          clearInterval(pingInterval);
+          adminSockets.delete(ws);
+        });
         ws.send(JSON.stringify({ type: 'connected' }));
       });
     } catch {
@@ -849,6 +878,16 @@ async function startServer() {
         return;
       }
 
+      const existingUserSubmissions = await db.listSubmissionsByUser(learner._id);
+      const policy = getCourseSubmissionPolicy(existingUserSubmissions, courseId);
+      if (policy.isRetakeBlocked) {
+        res.status(403).json({
+          error:
+            'Retaking this course is not allowed. Your previous submission was rejected without retry access.',
+        });
+        return;
+      }
+
       const readingDurationSeconds =
         typeof body.readingDurationSeconds === 'number' && Number.isFinite(body.readingDurationSeconds)
           ? Math.max(0, Math.round(body.readingDurationSeconds))
@@ -865,6 +904,7 @@ async function startServer() {
         userEmail: learner.email,
         overallScore: Math.max(0, Math.min(100, Number(body.overallScore ?? 0))),
         passed: Boolean(body.passed),
+        completed: true,
         status: 'pending_review',
         submittedAt: new Date().toISOString(),
         completedOfflineAt:
@@ -907,7 +947,11 @@ async function startServer() {
   });
 
   app.get('/api/submissions/mine', requireLearner, async (req: AuthedRequest, res) => {
-    const submissions = await db.listSubmissionsByUser(req.learner!._id);
+    const rawSubmissions = await db.listSubmissionsByUser(req.learner!._id);
+    const submissions = rawSubmissions.map((s) => ({
+      ...s,
+      completed: s.completed ?? true,
+    }));
     res.json({ submissions });
   });
 
@@ -934,8 +978,45 @@ async function startServer() {
     }
   });
 
+  app.get('/api/admin/events', (req, res) => {
+    const queryToken = typeof req.query.token === 'string' ? req.query.token : '';
+    const header = req.headers.authorization || '';
+    const bearerToken = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+    const payload = verifyToken(queryToken || bearerToken);
+    if (!payload || payload.role !== 'admin') {
+      res.status(401).json({ error: 'Admin authorization required.' });
+      return;
+    }
+
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    adminEventStreams.add(res);
+    res.write(`event: connected\ndata: ${JSON.stringify({ type: 'connected' })}\n\n`);
+
+    const keepAlive = setInterval(() => {
+      if (!res.writableEnded) {
+        res.write(': keepalive\n\n');
+      }
+    }, 15000);
+
+    req.on('close', () => {
+      clearInterval(keepAlive);
+      adminEventStreams.delete(res);
+    });
+  });
+
   app.get('/api/admin/submissions', requireAdmin, async (_req, res) => {
-    const submissions = await db.listAllSubmissions();
+    res.setHeader('Cache-Control', 'no-store');
+    const rawSubmissions = await db.listAllSubmissions();
+    const submissions = rawSubmissions.map((s) => ({
+      ...s,
+      completed: s.completed ?? true,
+    }));
     res.json({ submissions });
   });
 
@@ -1006,6 +1087,7 @@ async function startServer() {
 
   app.get('/api/admin/analytics', requireAdmin, async (_req, res) => {
     try {
+      res.setHeader('Cache-Control', 'no-store');
       const [courses, users, submissions, certificates, downloads] = await Promise.all([
         db.listCourses(true),
         db.listUsers(),
@@ -1044,6 +1126,7 @@ async function startServer() {
 
       const feedback =
         typeof req.body?.adminFeedback === 'string' ? req.body.adminFeedback.trim() : undefined;
+      const allowRetry = normalizeReviewAllowRetry(decision, req.body?.allowRetry);
 
       let certificate: CertificateRecord | undefined;
       if (decision === 'approved') {
@@ -1079,14 +1162,19 @@ async function startServer() {
           };
           await db.createCertificate(certificate);
         }
+      } else {
+        await db.deleteCertificateBySubmissionId(submission._id);
       }
 
       const updated: CourseSubmission = {
         ...submission,
+        completed: submission.completed ?? true,
         status: decision,
+        allowRetry,
         adminFeedback: feedback,
         reviewedAt: new Date().toISOString(),
-        certificateId: certificate?._id ?? submission.certificateId,
+        certificateId:
+          decision === 'approved' ? (certificate?._id ?? submission.certificateId) : undefined,
       };
       await db.updateSubmission(id, updated);
       broadcastToAdmins({ type: 'submission:updated', submission: updated });

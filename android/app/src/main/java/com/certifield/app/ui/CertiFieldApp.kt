@@ -151,8 +151,23 @@ fun CertiFieldApp() {
     var ratingDialogCourse by remember { mutableStateOf<Course?>(null) }
     var previewDialogCourse by remember { mutableStateOf<Course?>(null) }
 
+    val latestSubmissionByCourse = remember(submittedCourses) {
+        submittedCourses
+            .sortedByDescending { it.submittedAt }
+            .associateBy { it.courseId }
+    }
+    val blockedCourseIds = remember(latestSubmissionByCourse) {
+        latestSubmissionByCourse
+            .filterValues { it.status == "rejected" && it.allowRetry == false }
+            .keys
+    }
+    val retryableCourseIds = remember(latestSubmissionByCourse) {
+        latestSubmissionByCourse
+            .filterValues { it.status == "rejected" && it.allowRetry != false }
+            .keys
+    }
     val submittedCourseIds = remember(submittedCourses) {
-        submittedCourses.map { it.courseId }.toSet()
+        submittedCourses.filter { it.completed }.map { it.courseId }.toSet()
     }
     val locallyCompletedCourseIds = remember(progressMap, pendingSubmissions) {
         progressMap.filterValues { it.status == "completed" }.keys +
@@ -233,6 +248,10 @@ fun CertiFieldApp() {
             val fetched = api.fetchCourses()
             courses = fetched
             store.syncDownloadedCoursesMetadata(fetched)
+            if (submittedCourses.isNotEmpty()) {
+                store.reconcileProgressWithSubmissions(fetched, submittedCourses)
+                progressMap = store.loadProgressMap()
+            }
             downloadedPackages = store.loadPackages()
         }
 
@@ -242,6 +261,9 @@ fun CertiFieldApp() {
                 val subs = api.fetchMySubmissions()
                 submittedCourses = subs
                 store.saveCachedSubmissions(subs)
+                if (store.reconcileProgressWithSubmissions(courses, subs)) {
+                    progressMap = store.loadProgressMap()
+                }
             }
             runCatching {
                 val certs = api.fetchMyCertificates()
@@ -316,10 +338,15 @@ fun CertiFieldApp() {
                 label = "root_screen_transition",
             ) { playerPkg ->
                 if (playerPkg != null) {
+                    val existingSub = latestSubmissionByCourse[playerPkg.courseId]
+                        ?: submittedCourses.firstOrNull {
+                            it.courseId == playerPkg.courseId && it.completed
+                        }
                     CoursePlayerScreen(
                         pkg = playerPkg,
                         serverUrl = serverUrl,
                         initialProgress = progressMap[playerPkg.courseId] ?: CourseProgressState(courseId = playerPkg.courseId),
+                        existingSubmission = existingSub,
                         isConnected = isConnected,
                         isDarkMode = isDarkMode,
                         onToggleDarkMode = {
@@ -330,6 +357,10 @@ fun CertiFieldApp() {
                         user = user,
                         onProgressChange = { next ->
                             store.saveProgress(next)
+                            refreshLocal()
+                        },
+                        onRetryCourse = {
+                            store.resetCourseProgress(playerPkg.courseId)
                             refreshLocal()
                         },
                         onSubmitOnline = { score, passed, readingSecs, qRes, quizRes ->
@@ -345,7 +376,17 @@ fun CertiFieldApp() {
                                 questionResults = qRes,
                                 quizResults = quizRes,
                             )
+                            val existingProg = progressMap[playerPkg.courseId] ?: CourseProgressState(courseId = playerPkg.courseId)
+                            store.saveProgress(
+                                existingProg.copy(
+                                    completedModuleIds = playerPkg.course.modules.map { it.id },
+                                    currentModuleIndex = maxOf(0, playerPkg.course.modules.lastIndex),
+                                    status = "completed",
+                                    updatedAt = Instant.now().toString(),
+                                )
+                            )
                             refreshRemote()
+                            refreshLocal()
                             activePlayerPkg = null
                             activeTab = LearnerTab.FINISHED
                         },
@@ -689,7 +730,7 @@ fun CertiFieldApp() {
                         } else {
                             scope.launch {
                                 downloadPct = downloadPct + (course._id to 5)
-                                store.downloadCourse(course, serverUrl) { pct ->
+                                store.downloadCourse(course, serverUrl, submittedCourses) { pct ->
                                     downloadPct = downloadPct + (course._id to pct)
                                 }
                                 if (isConnected) {
@@ -723,6 +764,7 @@ fun CertiFieldApp() {
                             serverUrl = serverUrl,
                             downloadedIds = downloadedPackages.map { it.courseId }.toSet(),
                             finishedCourseIds = finishedCourseIds,
+                            blockedCourseIds = blockedCourseIds,
                             downloadPct = downloadPct,
                             isConnected = isConnected,
                             isDarkMode = isDarkMode,
@@ -731,9 +773,19 @@ fun CertiFieldApp() {
                             borderColor = borderColor,
                             textPrimary = textPrimary,
                             textSecondary = textSecondary,
-                            onDownload = startCourseDownload,
+                            onDownload = { course ->
+                                if (blockedCourseIds.contains(course._id)) {
+                                    statusFeedbackBanner = false to "Retaking \"${course.title}\" was disabled by the administrator."
+                                } else {
+                                    startCourseDownload(course)
+                                }
+                            },
                             onOpen = { courseId ->
-                                activePlayerPkg = downloadedPackages.firstOrNull { it.courseId == courseId }
+                                if (blockedCourseIds.contains(courseId)) {
+                                    statusFeedbackBanner = false to "Retaking this course was disabled by the administrator."
+                                } else {
+                                    activePlayerPkg = downloadedPackages.firstOrNull { it.courseId == courseId }
+                                }
                             },
                             onPreviewCourse = { course -> previewDialogCourse = course },
                             onRateCourse = handleRateCourse,
@@ -743,6 +795,8 @@ fun CertiFieldApp() {
                             packages = downloadedPackages,
                             progressMap = progressMap,
                             finishedCourseIds = finishedCourseIds,
+                            blockedCourseIds = blockedCourseIds,
+                            retryableCourseIds = retryableCourseIds,
                             serverUrl = serverUrl,
                             isDarkMode = isDarkMode,
                             brandAccent = brandAccent,
@@ -750,7 +804,18 @@ fun CertiFieldApp() {
                             borderColor = borderColor,
                             textPrimary = textPrimary,
                             textSecondary = textSecondary,
-                            onOpen = { pkg -> activePlayerPkg = pkg },
+                            onOpen = { pkg ->
+                                if (blockedCourseIds.contains(pkg.courseId)) {
+                                    statusFeedbackBanner = false to "Retaking \"${pkg.course.title}\" was disabled by the administrator."
+                                } else {
+                                    activePlayerPkg = pkg
+                                }
+                            },
+                            onRetry = { pkg ->
+                                store.resetCourseProgress(pkg.courseId)
+                                refreshLocal()
+                                activePlayerPkg = pkg
+                            },
                             onPreviewCourse = { course -> previewDialogCourse = course },
                             onRemove = { courseId ->
                                 store.removeCourse(courseId)
@@ -861,6 +926,7 @@ fun CertiFieldApp() {
                     store.clearAuthSession()
                     submittedCourses = emptyList()
                     certificates = emptyList()
+                    refreshLocal()
                     showAuthDialog = false
                 },
             )
@@ -902,24 +968,27 @@ fun CertiFieldApp() {
 
         previewDialogCourse?.let { targetCourse ->
             val alreadyDownloaded = downloadedPackages.any { it.courseId == targetCourse._id }
+            val isBlocked = blockedCourseIds.contains(targetCourse._id)
             CoursePreviewDialog(
                 course = targetCourse,
                 serverUrl = serverUrl,
                 isDownloaded = alreadyDownloaded,
-                isConnected = isConnected,
+                isConnected = isConnected && !isBlocked,
                 isDarkMode = isDarkMode,
                 brandAccent = brandAccent,
                 onDismiss = { previewDialogCourse = null },
                 onPrimaryAction = {
                     previewDialogCourse = null
-                    if (alreadyDownloaded) {
+                    if (isBlocked) {
+                        statusFeedbackBanner = false to "Retaking \"${targetCourse.title}\" was disabled by the administrator."
+                    } else if (alreadyDownloaded) {
                         activePlayerPkg = downloadedPackages.firstOrNull { it.courseId == targetCourse._id }
                     } else if (user == null) {
                         showAuthDialog = true
                     } else {
                         scope.launch {
                             downloadPct = downloadPct + (targetCourse._id to 5)
-                            store.downloadCourse(targetCourse, serverUrl) { pct ->
+                            store.downloadCourse(targetCourse, serverUrl, submittedCourses) { pct ->
                                 downloadPct = downloadPct + (targetCourse._id to pct)
                             }
                             if (isConnected) {
@@ -1285,6 +1354,7 @@ private fun AvailableCoursesTab(
     serverUrl: String,
     downloadedIds: Set<String>,
     finishedCourseIds: Set<String>,
+    blockedCourseIds: Set<String>,
     downloadPct: Map<String, Int>,
     isConnected: Boolean,
     isDarkMode: Boolean,
@@ -1306,10 +1376,22 @@ private fun AvailableCoursesTab(
         listOf("All") + courses.map { it.category.trim() }.filter { it.isNotEmpty() }.distinct().sorted()
     }
 
+    val tagOptions = remember(categories) {
+        categories.map { cat -> cat to if (cat == "All") "All Tags" else cat }
+    }
+    val ratingOptions = remember {
+        listOf(
+            "all" to "All Ratings",
+            "highest_rated" to "Highest Rated",
+            "most_rated" to "Most Rated",
+            "four_plus" to "4+ Stars",
+        )
+    }
+
     val filteredCourses = remember(courses, searchQuery, selectedCategory, ratingFilter) {
         val q = searchQuery.trim().lowercase()
         val matched = courses.filter { course ->
-            val categoryMatch = selectedCategory == "All" || course.category == selectedCategory
+            val categoryMatch = selectedCategory == "All" || course.category.trim() == selectedCategory
             val queryMatch = q.isEmpty() ||
                 course.title.lowercase().contains(q) ||
                 course.description.lowercase().contains(q) ||
@@ -1375,41 +1457,40 @@ private fun AvailableCoursesTab(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                if (categories.size > 1) {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(categories) { cat ->
-                            FilterChip(
-                                selected = selectedCategory == cat,
-                                onClick = { selectedCategory = cat },
-                                label = { Text(cat, maxLines = 1, fontSize = 12.sp) },
-                            )
-                        }
-                    }
-                }
-
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val ratingOptions = listOf(
-                        "all" to "All Ratings",
-                        "highest_rated" to "Highest Rated",
-                        "most_rated" to "Most Rated",
-                        "four_plus" to "4+ Stars",
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    SearchableFilterDropdown(
+                        options = tagOptions,
+                        selectedKey = selectedCategory,
+                        defaultKey = "All",
+                        searchPlaceholder = "Search tags...",
+                        leadingIcon = Icons.Default.Label,
+                        isDarkMode = isDarkMode,
+                        brandAccent = brandAccent,
+                        cardBg = cardBg,
+                        borderColor = borderColor,
+                        textPrimary = textPrimary,
+                        textSecondary = textSecondary,
+                        onSelect = { selectedCategory = it },
+                        modifier = Modifier.weight(1f),
                     )
-                    items(ratingOptions) { (key, label) ->
-                        FilterChip(
-                            selected = ratingFilter == key,
-                            onClick = { ratingFilter = key },
-                            leadingIcon = if (key != "all") {
-                                {
-                                    Icon(
-                                        imageVector = Icons.Default.Star,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(15.dp),
-                                    )
-                                }
-                            } else null,
-                            label = { Text(label, maxLines = 1, fontSize = 12.sp) },
-                        )
-                    }
+                    SearchableFilterDropdown(
+                        options = ratingOptions,
+                        selectedKey = ratingFilter,
+                        defaultKey = "all",
+                        searchPlaceholder = "Search ratings...",
+                        leadingIcon = Icons.Default.Star,
+                        isDarkMode = isDarkMode,
+                        brandAccent = brandAccent,
+                        cardBg = cardBg,
+                        borderColor = borderColor,
+                        textPrimary = textPrimary,
+                        textSecondary = textSecondary,
+                        onSelect = { ratingFilter = it },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
@@ -1463,6 +1544,7 @@ private fun AvailableCoursesTab(
             items(filteredCourses, key = { it._id }) { course ->
                 val isDownloaded = downloadedIds.contains(course._id)
                 val isFinished = finishedCourseIds.contains(course._id)
+                val isBlocked = blockedCourseIds.contains(course._id)
                 val pct = downloadPct[course._id]
                 val normalizedBase = ApiClient.normalizeConnectionUrl(serverUrl)
                 val bannerModel = if (course.bannerUrl.startsWith("http")) course.bannerUrl
@@ -1498,6 +1580,37 @@ private fun AvailableCoursesTab(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f).padding(end = 8.dp),
                                 )
+                                if (isBlocked) {
+                                    Surface(
+                                        color = if (isDarkMode) Color(0xFF7F1D1D).copy(alpha = 0.72f) else Color(0xFFFEE2E2),
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier.padding(end = 8.dp),
+                                    ) {
+                                        Text(
+                                            text = "LOCKED",
+                                            fontSize = 9.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isDarkMode) Color(0xFFFCA5A5) else Color(0xFFB91C1C),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        )
+                                    }
+                                } else if (isFinished) {
+                                    Surface(
+                                        color = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.72f) else Color(0xFFDCFCE7),
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier.padding(end = 8.dp),
+                                    ) {
+                                        Text(
+                                            text = "COMPLETED",
+                                            fontSize = 9.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isDarkMode) Color(0xFF34D399) else Color(0xFF15803D),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        )
+                                    }
+                                }
                                 Text(
                                     "${course.modules.count { it.kind == "lesson" }} Lessons · ${course.modules.count { it.kind == "quiz" }} Quizzes",
                                     fontSize = 11.sp,
@@ -1563,7 +1676,20 @@ private fun AvailableCoursesTab(
                                                 fontWeight = FontWeight.SemiBold,
                                             )
                                         }
-                                        if (isDownloaded) {
+                                        if (isBlocked) {
+                                            Button(
+                                                onClick = {},
+                                                enabled = false,
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.weight(1f).height(48.dp),
+                                            ) {
+                                                Text(
+                                                    "Retake Locked",
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                )
+                                            }
+                                        } else if (isDownloaded) {
                                             Button(
                                                 onClick = { onOpen(course._id) },
                                                 shape = RoundedCornerShape(12.dp),
@@ -1633,10 +1759,176 @@ private fun AvailableCoursesTab(
 }
 
 @Composable
+private fun SearchableFilterDropdown(
+    options: List<Pair<String, String>>,
+    selectedKey: String,
+    defaultKey: String,
+    searchPlaceholder: String,
+    leadingIcon: androidx.compose.ui.graphics.vector.ImageVector,
+    isDarkMode: Boolean,
+    brandAccent: Color,
+    cardBg: Color,
+    borderColor: Color,
+    textPrimary: Color,
+    textSecondary: Color,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var filterQuery by remember { mutableStateOf("") }
+
+    val selectedLabel = options.firstOrNull { it.first == selectedKey }?.second
+        ?: options.firstOrNull()?.second
+        ?: ""
+    val isActiveFilter = selectedKey != defaultKey
+
+    val filteredOptions = remember(options, filterQuery) {
+        val q = filterQuery.trim().lowercase()
+        if (q.isEmpty()) options else options.filter { it.second.lowercase().contains(q) }
+    }
+
+    Box(modifier = modifier) {
+        Surface(
+            onClick = { expanded = true },
+            shape = RoundedCornerShape(12.dp),
+            color = if (isActiveFilter) {
+                brandAccent.copy(alpha = if (isDarkMode) 0.14f else 0.08f)
+            } else {
+                cardBg
+            },
+            border = BorderStroke(1.dp, if (expanded || isActiveFilter) brandAccent else borderColor),
+            modifier = Modifier.fillMaxWidth().height(46.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
+            ) {
+                Icon(
+                    imageVector = leadingIcon,
+                    contentDescription = null,
+                    tint = if (isActiveFilter) brandAccent else textSecondary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = selectedLabel,
+                    fontSize = 12.5.sp,
+                    fontWeight = if (isActiveFilter) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (isActiveFilter) brandAccent else textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = if (expanded || isActiveFilter) brandAccent else textSecondary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = {
+                expanded = false
+                filterQuery = ""
+            },
+            modifier = Modifier
+                .widthIn(min = 210.dp, max = 280.dp)
+                .background(MaterialTheme.colorScheme.surface),
+        ) {
+            OutlinedTextField(
+                value = filterQuery,
+                onValueChange = { filterQuery = it },
+                placeholder = { Text(searchPlaceholder, fontSize = 12.sp) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        tint = textSecondary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                },
+                trailingIcon = {
+                    if (filterQuery.isNotEmpty()) {
+                        IconButton(
+                            onClick = { filterQuery = "" },
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear search",
+                                tint = textSecondary,
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodySmall,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+            HorizontalDivider(color = borderColor)
+
+            if (filteredOptions.isEmpty()) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = "No matching options",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = textSecondary,
+                        )
+                    },
+                    onClick = {},
+                    enabled = false,
+                )
+            } else {
+                filteredOptions.forEach { (key, label) ->
+                    val isSelected = key == selectedKey
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = label,
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) brandAccent else textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        trailingIcon = if (isSelected) {
+                            {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = brandAccent,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        } else null,
+                        onClick = {
+                            onSelect(key)
+                            filterQuery = ""
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun DownloadedCoursesTab(
     packages: List<DownloadedCoursePackage>,
     progressMap: Map<String, CourseProgressState>,
     finishedCourseIds: Set<String>,
+    blockedCourseIds: Set<String>,
+    retryableCourseIds: Set<String>,
     serverUrl: String,
     isDarkMode: Boolean,
     brandAccent: Color,
@@ -1645,24 +1937,32 @@ private fun DownloadedCoursesTab(
     textPrimary: Color,
     textSecondary: Color,
     onOpen: (DownloadedCoursePackage) -> Unit,
+    onRetry: (DownloadedCoursePackage) -> Unit,
     onPreviewCourse: (Course) -> Unit,
     onRemove: (String) -> Unit,
     onRateCourse: (Course) -> Unit,
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    var statusFilter by remember { mutableStateOf("all") } // "all" | "not_started" | "in_progress" | "completed"
+    var selectedCategory by remember { mutableStateOf("All") }
     var ratingFilter by remember { mutableStateOf("all") } // "all" | "four_plus" | "highest_rated" | "most_rated"
 
-    val filtered = remember(packages, progressMap, searchQuery, statusFilter, ratingFilter) {
+    val tagOptions = remember(packages) {
+        val cats = packages.map { it.course.category.trim() }.filter { it.isNotEmpty() }.distinct().sorted()
+        (listOf("All") + cats).map { cat -> cat to if (cat == "All") "All Tags" else cat }
+    }
+    val ratingOptions = remember {
+        listOf(
+            "all" to "All Ratings",
+            "highest_rated" to "Highest Rated",
+            "most_rated" to "Most Rated",
+            "four_plus" to "4+ Stars",
+        )
+    }
+
+    val filtered = remember(packages, searchQuery, selectedCategory, ratingFilter) {
         val q = searchQuery.trim().lowercase()
         val matched = packages.filter { pkg ->
-            val status = progressMap[pkg.courseId]?.status ?: "not_started"
-            val statusOk = when (statusFilter) {
-                "not_started" -> status == "not_started"
-                "in_progress" -> status == "in_progress"
-                "completed" -> status == "completed"
-                else -> true
-            }
+            val categoryMatch = selectedCategory == "All" || pkg.course.category.trim() == selectedCategory
             val queryOk = q.isEmpty() ||
                 pkg.course.title.lowercase().contains(q) ||
                 pkg.course.description.lowercase().contains(q) ||
@@ -1671,7 +1971,7 @@ private fun DownloadedCoursesTab(
                 "four_plus" -> pkg.course.ratingCount > 0 && pkg.course.averageRating >= 4.0
                 else -> true
             }
-            statusOk && queryOk && ratingOk
+            categoryMatch && queryOk && ratingOk
         }
         when (ratingFilter) {
             "highest_rated", "four_plus" -> matched.sortedWith(
@@ -1696,76 +1996,70 @@ private fun DownloadedCoursesTab(
             textSecondary = textSecondary,
         )
 
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            placeholder = { Text("Search saved courses...") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Search saved courses",
-                    tint = textSecondary,
-                )
-            },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = "" }) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Clear search",
-                            tint = textSecondary,
-                        )
-                    }
-                }
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-        )
-
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(bottom = 6.dp),
-        ) {
-            val statusOptions = listOf(
-                "all" to "All",
-                "not_started" to "New",
-                "in_progress" to "In Progress",
-                "completed" to "Completed",
-            )
-            items(statusOptions) { (key, label) ->
-                FilterChip(
-                    selected = statusFilter == key,
-                    onClick = { statusFilter = key },
-                    label = { Text(label, maxLines = 1, fontSize = 12.sp) },
-                )
-            }
-        }
-
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(bottom = 10.dp),
         ) {
-            val ratingOptions = listOf(
-                "all" to "All Ratings",
-                "highest_rated" to "Highest Rated",
-                "most_rated" to "Most Rated",
-                "four_plus" to "4+ Stars",
-            )
-            items(ratingOptions) { (key, label) ->
-                FilterChip(
-                    selected = ratingFilter == key,
-                    onClick = { ratingFilter = key },
-                    leadingIcon = if (key != "all") {
-                        {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search saved courses...") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search saved courses",
+                        tint = textSecondary,
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
                             Icon(
-                                imageVector = Icons.Default.Star,
-                                contentDescription = null,
-                                modifier = Modifier.size(15.dp),
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear search",
+                                tint = textSecondary,
                             )
                         }
-                    } else null,
-                    label = { Text(label, maxLines = 1, fontSize = 12.sp) },
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                SearchableFilterDropdown(
+                    options = tagOptions,
+                    selectedKey = selectedCategory,
+                    defaultKey = "All",
+                    searchPlaceholder = "Search tags...",
+                    leadingIcon = Icons.Default.Label,
+                    isDarkMode = isDarkMode,
+                    brandAccent = brandAccent,
+                    cardBg = cardBg,
+                    borderColor = borderColor,
+                    textPrimary = textPrimary,
+                    textSecondary = textSecondary,
+                    onSelect = { selectedCategory = it },
+                    modifier = Modifier.weight(1f),
+                )
+                SearchableFilterDropdown(
+                    options = ratingOptions,
+                    selectedKey = ratingFilter,
+                    defaultKey = "all",
+                    searchPlaceholder = "Search ratings...",
+                    leadingIcon = Icons.Default.Star,
+                    isDarkMode = isDarkMode,
+                    brandAccent = brandAccent,
+                    cardBg = cardBg,
+                    borderColor = borderColor,
+                    textPrimary = textPrimary,
+                    textSecondary = textSecondary,
+                    onSelect = { ratingFilter = it },
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
@@ -1783,7 +2077,7 @@ private fun DownloadedCoursesTab(
                         TextButton(
                             onClick = {
                                 searchQuery = ""
-                                statusFilter = "all"
+                                selectedCategory = "All"
                                 ratingFilter = "all"
                             }
                         ) {
@@ -1801,8 +2095,17 @@ private fun DownloadedCoursesTab(
                 items(filtered, key = { it.courseId }) { pkg ->
                     val prog = progressMap[pkg.courseId]
                     val total = maxOf(1, pkg.course.modules.size)
-                    val done = prog?.completedModuleIds?.size ?: 0
-                    val status = prog?.status ?: "not_started"
+                    val isBlocked = blockedCourseIds.contains(pkg.courseId)
+                    val canRetry = retryableCourseIds.contains(pkg.courseId)
+                    val isFinished = finishedCourseIds.contains(pkg.courseId) || prog?.status == "completed"
+                    val done = if (isFinished && prog?.status != "in_progress") total else (prog?.completedModuleIds?.size ?: 0)
+                    val status = when {
+                        isBlocked -> "blocked"
+                        canRetry && prog?.status == "in_progress" -> "in_progress"
+                        canRetry && prog?.status != "not_started" -> "retryable"
+                        isFinished -> "completed"
+                        else -> prog?.status ?: "not_started"
+                    }
 
                     val localBannerPath = pkg.localMediaMap[pkg.course.bannerUrl]
                     val bannerModel: Any? = when {
@@ -1828,13 +2131,18 @@ private fun DownloadedCoursesTab(
                             }
                             Column(Modifier.padding(16.dp)) {
                                 val statusText = when (status) {
+                                    "blocked" -> "RETAKE LOCKED"
+                                    "retryable" -> "REJECTED · RETRY ALLOWED"
                                     "completed" -> "COMPLETED"
                                     "in_progress" -> "IN PROGRESS"
                                     else -> "NOT STARTED"
                                 }
-                                val statusColor = if (status == "completed") {
-                                    if (isDarkMode) Color(0xFF34D399) else Color(0xFF15803D)
-                                } else brandAccent
+                                val statusColor = when (status) {
+                                    "blocked" -> if (isDarkMode) Color(0xFFF87171) else Color(0xFFDC2626)
+                                    "retryable" -> if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706)
+                                    "completed" -> if (isDarkMode) Color(0xFF34D399) else Color(0xFF15803D)
+                                    else -> brandAccent
+                                }
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -1894,20 +2202,60 @@ private fun DownloadedCoursesTab(
                                 Spacer(Modifier.height(4.dp))
                                 LinearProgressIndicator(
                                     progress = { done.toFloat() / total.toFloat() },
-                                    color = brandAccent,
+                                    color = statusColor,
                                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)),
                                 )
                                 Spacer(Modifier.height(14.dp))
-                                Button(
-                                    onClick = { onOpen(pkg) },
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
-                                ) {
-                                    Text(if (status == "not_started") "Start Course" else "Resume Course", maxLines = 1)
+                                if (status == "blocked") {
+                                    Button(
+                                        onClick = {},
+                                        enabled = false,
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                                    ) {
+                                        Text(
+                                            "Retake Blocked · No Certificate",
+                                            maxLines = 1,
+                                        )
+                                    }
+                                } else if (status == "retryable") {
+                                    Button(
+                                        onClick = { onRetry(pkg) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isDarkMode) Color(0xFFD97706) else Color(0xFFB45309)
+                                        ),
+                                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                                    ) {
+                                        Text(
+                                            "Retry Course",
+                                            maxLines = 1,
+                                            color = Color.White,
+                                        )
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = { onOpen(pkg) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (status == "completed") {
+                                                if (isDarkMode) Color(0xFF059669) else Color(0xFF15803D)
+                                            } else brandAccent
+                                        ),
+                                    ) {
+                                        Text(
+                                            when (status) {
+                                                "completed" -> "Completed · View Summary"
+                                                "in_progress" -> "Resume Course"
+                                                else -> "Start Course"
+                                            },
+                                            maxLines = 1,
+                                            color = Color.White,
+                                        )
+                                    }
                                 }
                                 Spacer(Modifier.height(8.dp))
-                                val isFinished = finishedCourseIds.contains(pkg.courseId) || status == "completed"
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier.fillMaxWidth(),
@@ -2114,7 +2462,7 @@ private fun FinishedCoursesTab(
                 }
                 val label = when (sub.status) {
                     "approved" -> "APPROVED"
-                    "rejected" -> "REJECTED"
+                    "rejected" -> if (sub.allowRetry == false) "REJECTED · RETAKE LOCKED" else "REJECTED · RETRY ALLOWED"
                     else -> "PENDING ADMIN REVIEW"
                 }
                 Card(
@@ -2392,12 +2740,14 @@ private fun CoursePlayerScreen(
     pkg: DownloadedCoursePackage,
     serverUrl: String,
     initialProgress: CourseProgressState,
+    existingSubmission: CourseSubmission? = null,
     isConnected: Boolean,
     isDarkMode: Boolean,
     onToggleDarkMode: () -> Unit,
     brandAccent: Color,
     user: UserAccount?,
     onProgressChange: (CourseProgressState) -> Unit,
+    onRetryCourse: () -> Unit,
     onSubmitOnline: suspend (Int, Boolean, Int, List<QuestionAttemptRecord>, List<QuizAttemptSummary>) -> Unit,
     onSavePendingOffline: (PendingOfflineSubmission) -> Unit,
     onRequireAuth: () -> Unit,
@@ -2405,7 +2755,15 @@ private fun CoursePlayerScreen(
 ) {
     val scope = rememberCoroutineScope()
     var progress by remember { mutableStateOf(initialProgress) }
-    var showSummary by remember { mutableStateOf(initialProgress.status == "completed") }
+    val isRetakeBlocked = existingSubmission?.status == "rejected" && existingSubmission.allowRetry == false
+    val canRetryRejected = existingSubmission?.status == "rejected" && existingSubmission.allowRetry != false
+    var showSummary by remember {
+        mutableStateOf(
+            isRetakeBlocked ||
+                initialProgress.status == "completed" ||
+                (existingSubmission != null && initialProgress.status != "in_progress")
+        )
+    }
     var answers by remember { mutableStateOf<Map<String, QuizAnswerInput>>(emptyMap()) }
     var feedbackState by remember { mutableStateOf<QuizFeedbackState?>(null) }
     var restartTargetIdx by remember { mutableStateOf(0) }
@@ -2619,14 +2977,28 @@ private fun CoursePlayerScreen(
             label = "course_player_module_transition",
         ) { targetIdx ->
             if (targetIdx == -1) {
+                val hydratedResultsMap = if (progress.latestQuestionResults.isNotEmpty()) {
+                    progress.latestQuestionResults
+                } else {
+                    existingSubmission?.questionResults?.associateBy { it.questionId }.orEmpty()
+                }
                 val orderedResults = pkg.course.modules
                     .filter { it.kind == "quiz" }
                     .flatMap { it.questions }
-                    .mapNotNull { progress.latestQuestionResults[it.id] }
-                val quizList = progress.quizResults.values.toList()
+                    .mapNotNull { hydratedResultsMap[it.id] }
+                    .ifEmpty { existingSubmission?.questionResults.orEmpty() }
+                val quizList = if (progress.quizResults.isNotEmpty()) {
+                    progress.quizResults.values.toList()
+                } else {
+                    existingSubmission?.quizResults.orEmpty()
+                }
                 val correctCount = orderedResults.count { it.isCorrect }
-                val score = if (orderedResults.isEmpty()) 100 else (correctCount * 100) / orderedResults.size
-                val passed = quizList.all { it.passed }
+                val score = when {
+                    orderedResults.isNotEmpty() -> (correctCount * 100) / orderedResults.size
+                    existingSubmission != null -> existingSubmission.overallScore
+                    else -> 100
+                }
+                val passed = if (quizList.isNotEmpty()) quizList.all { it.passed } else (existingSubmission?.passed ?: true)
 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -2682,7 +3054,87 @@ private fun CoursePlayerScreen(
                     item { Text(err, color = Color(0xFFEF4444)) }
                 }
                 item {
-                    if (!isConnected) {
+                    if (existingSubmission != null && (isRetakeBlocked || initialProgress.status != "in_progress")) {
+                        val isRejected = existingSubmission.status == "rejected"
+                        val reviewStatusLabel = when (existingSubmission.status) {
+                            "approved" -> "Approved by Admin"
+                            "rejected" -> if (isRetakeBlocked) "Rejected · Retake Disabled" else "Rejected · Retry Allowed"
+                            else -> "Pending Admin Review"
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isRejected) {
+                                        if (isDarkMode) Color(0xFF7F1D1D).copy(alpha = 0.55f) else Color(0xFFFEF2F2)
+                                    } else if (isDarkMode) {
+                                        Color(0xFF064E3B).copy(alpha = 0.55f)
+                                    } else {
+                                        Color(0xFFECFDF5)
+                                    }
+                                ),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isRejected) {
+                                        if (isDarkMode) Color(0xFFEF4444).copy(alpha = 0.5f) else Color(0xFFFECACA)
+                                    } else if (isDarkMode) {
+                                        Color(0xFF10B981).copy(alpha = 0.5f)
+                                    } else {
+                                        Color(0xFFA7F3D0)
+                                    }
+                                ),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(Modifier.padding(14.dp)) {
+                                    Text(
+                                        text = if (isRetakeBlocked) "COURSE LOCKED — NO CERTIFICATE" else "COURSE COMPLETED & SUBMITTED",
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isRejected) {
+                                            if (isDarkMode) Color(0xFFFCA5A5) else Color(0xFFDC2626)
+                                        } else if (isDarkMode) {
+                                            Color(0xFF34D399)
+                                        } else {
+                                            Color(0xFF15803D)
+                                        },
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = if (isRetakeBlocked) {
+                                            "Your submission was rejected without retry access. You cannot undergo this course again and will not receive a certificate."
+                                        } else {
+                                            "This course is marked as completed on your account ($reviewStatusLabel)."
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = textPrimary,
+                                    )
+                                }
+                            }
+                            if (canRetryRejected) {
+                                Button(
+                                    onClick = {
+                                        onRetryCourse()
+                                        progress = CourseProgressState(courseId = pkg.courseId)
+                                        answers = emptyMap()
+                                        feedbackState = null
+                                        showSummary = false
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isDarkMode) Color(0xFFD97706) else Color(0xFFB45309)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                ) { Text("Retry Course", color = Color.White) }
+                            }
+                            Button(
+                                onClick = onExit,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                            ) { Text("Back to Courses") }
+                        }
+                    } else if (!isConnected) {
                         Button(
                             onClick = {
                                 onSavePendingOffline(

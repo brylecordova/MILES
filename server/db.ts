@@ -492,6 +492,20 @@ class DatabaseRepository {
     this.saveLocal();
     return cert;
   }
+
+  async deleteCertificateBySubmissionId(submissionId: string): Promise<void> {
+    if (this.mode === 'mongodb') {
+      await this.col<CertificateRecord>('certificates').deleteMany({ submissionId });
+      return;
+    }
+    const prevLen = this.localData.certificates.length;
+    this.localData.certificates = this.localData.certificates.filter(
+      (c) => c.submissionId !== submissionId
+    );
+    if (this.localData.certificates.length !== prevLen) {
+      this.saveLocal();
+    }
+  }
 }
 
 export const db = new DatabaseRepository();

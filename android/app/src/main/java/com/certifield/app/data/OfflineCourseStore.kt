@@ -148,6 +148,7 @@ class OfflineCourseStore(private val context: Context) {
         prefs.edit().remove("auth_session").commit()
         if (submissionsCacheFile.exists()) submissionsCacheFile.delete()
         if (certificatesCacheFile.exists()) certificatesCacheFile.delete()
+        if (progressFile.exists()) progressFile.delete()
     }
 
     // ---- Offline Cache for Submissions & Certificates ----
@@ -177,6 +178,7 @@ class OfflineCourseStore(private val context: Context) {
     suspend fun downloadCourse(
         course: Course,
         serverBaseUrl: String,
+        submissions: List<CourseSubmission> = loadCachedSubmissions(),
         onProgress: (Int) -> Unit,
     ): DownloadedCoursePackage = withContext(Dispatchers.IO) {
         val urls = buildSet {
@@ -230,7 +232,12 @@ class OfflineCourseStore(private val context: Context) {
         packagesFile.writeText(json.encodeToString(current.values.toList()))
 
         val progMap = loadProgressMap().toMutableMap()
-        if (!progMap.containsKey(course._id)) {
+        val effectiveSubs = if (submissions.isNotEmpty()) submissions else loadCachedSubmissions()
+        val matchedSubmission = effectiveSubs.firstOrNull { it.courseId == course._id && it.completed }
+        if (matchedSubmission != null) {
+            progMap[course._id] = buildCompletedProgressFromSubmission(course, matchedSubmission, progMap[course._id])
+            progressFile.writeText(json.encodeToString(progMap))
+        } else if (!progMap.containsKey(course._id)) {
             progMap[course._id] = CourseProgressState(courseId = course._id)
             progressFile.writeText(json.encodeToString(progMap))
         }
@@ -294,6 +301,101 @@ class OfflineCourseStore(private val context: Context) {
         val map = loadProgressMap().toMutableMap()
         map[state.courseId] = state
         progressFile.writeText(json.encodeToString(map))
+    }
+
+    fun resetCourseProgress(courseId: String) {
+        val map = loadProgressMap().toMutableMap()
+        map[courseId] = CourseProgressState(courseId = courseId)
+        progressFile.writeText(json.encodeToString(map))
+    }
+
+    fun buildCompletedProgressFromSubmission(
+        course: Course?,
+        submission: CourseSubmission,
+        existing: CourseProgressState? = null,
+    ): CourseProgressState {
+        val allModuleIds = course?.modules?.map { it.id }.orEmpty()
+        val mergedCompletedIds = (existing?.completedModuleIds.orEmpty() + allModuleIds).distinct()
+        val lastIndex = maxOf(0, (course?.modules?.lastIndex ?: existing?.currentModuleIndex ?: 0))
+
+        val questionResultsMap = if (!existing?.latestQuestionResults.isNullOrEmpty()) {
+            existing!!.latestQuestionResults
+        } else {
+            submission.questionResults.associateBy { it.questionId }
+        }
+        val quizResultsMap = if (!existing?.quizResults.isNullOrEmpty()) {
+            existing!!.quizResults
+        } else {
+            submission.quizResults.associateBy { it.quizId }
+        }
+        val questionTriesMap = if (!existing?.questionTries.isNullOrEmpty()) {
+            existing!!.questionTries
+        } else {
+            submission.questionResults.associate { it.questionId to maxOf(1, it.tries) }
+        }
+        val quizAttemptsMap = if (!existing?.quizAttempts.isNullOrEmpty()) {
+            existing!!.quizAttempts
+        } else {
+            submission.quizResults.associate { it.quizId to maxOf(1, it.attempts) }
+        }
+
+        return CourseProgressState(
+            courseId = submission.courseId,
+            currentModuleIndex = maxOf(existing?.currentModuleIndex ?: 0, lastIndex),
+            completedModuleIds = mergedCompletedIds,
+            questionTries = questionTriesMap,
+            quizAttempts = quizAttemptsMap,
+            latestQuestionResults = questionResultsMap,
+            quizResults = quizResultsMap,
+            readingDurationSeconds = maxOf(
+                existing?.readingDurationSeconds ?: 0,
+                submission.readingDurationSeconds,
+            ),
+            status = "completed",
+            updatedAt = existing?.updatedAt?.takeIf { it.isNotBlank() } ?: submission.submittedAt,
+        )
+    }
+
+    fun reconcileProgressWithSubmissions(
+        courses: List<Course>,
+        submissions: List<CourseSubmission>,
+    ): Boolean {
+        if (submissions.isEmpty()) return false
+        val latestSubByCourse = linkedMapOf<String, CourseSubmission>()
+        submissions
+            .sortedByDescending { it.submittedAt }
+            .forEach { sub ->
+                if (!latestSubByCourse.containsKey(sub.courseId)) {
+                    latestSubByCourse[sub.courseId] = sub
+                }
+            }
+        if (latestSubByCourse.isEmpty()) return false
+
+        val coursesById = buildMap<String, Course> {
+            loadPackages().forEach { put(it.courseId, it.course) }
+            courses.forEach { put(it._id, it) }
+        }
+        val progMap = loadProgressMap().toMutableMap()
+        var changed = false
+
+        latestSubByCourse.forEach { (courseId, sub) ->
+            if (!sub.completed) return@forEach
+            val existing = progMap[courseId]
+            val canRetry = sub.status == "rejected" && sub.allowRetry != false
+            if (canRetry && existing?.status == "in_progress") {
+                return@forEach
+            }
+            val reconciled = buildCompletedProgressFromSubmission(coursesById[courseId], sub, existing)
+            if (existing != reconciled) {
+                progMap[courseId] = reconciled
+                changed = true
+            }
+        }
+
+        if (changed) {
+            progressFile.writeText(json.encodeToString(progMap))
+        }
+        return changed
     }
 
     fun loadPendingSubmissions(): List<PendingOfflineSubmission> {

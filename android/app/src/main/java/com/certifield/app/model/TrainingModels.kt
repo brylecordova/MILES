@@ -134,7 +134,9 @@ data class CourseSubmission(
     val userEmail: String,
     val overallScore: Int,
     val passed: Boolean,
+    val completed: Boolean = true,
     val status: String, // "pending_review" | "approved" | "rejected"
+    val allowRetry: Boolean? = null,
     val adminFeedback: String? = null,
     val reviewedAt: String? = null,
     val submittedAt: String,
