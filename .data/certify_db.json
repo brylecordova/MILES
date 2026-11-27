@@ -212,7 +212,31 @@
             }
           ]
         }
-      ]
+      ],
+      "ratings": [
+        {
+          "userId": "user-seed-elena",
+          "rating": 5,
+          "updatedAt": "2026-11-26T16:31:54.317Z"
+        },
+        {
+          "userId": "user-seed-marcus",
+          "rating": 5,
+          "updatedAt": "2026-11-26T16:31:54.317Z"
+        },
+        {
+          "userId": "user-seed-priya",
+          "rating": 4,
+          "updatedAt": "2026-11-26T16:31:54.317Z"
+        },
+        {
+          "userId": "user-seed-david",
+          "rating": 5,
+          "updatedAt": "2026-11-26T16:31:54.317Z"
+        }
+      ],
+      "averageRating": 4.8,
+      "ratingCount": 4
     },
     {
       "_id": "course-clinical-hygiene",
@@ -331,7 +355,26 @@
             }
           ]
         }
-      ]
+      ],
+      "ratings": [
+        {
+          "userId": "user-seed-elena",
+          "rating": 5,
+          "updatedAt": "2026-11-26T16:31:54.317Z"
+        },
+        {
+          "userId": "user-seed-priya",
+          "rating": 4,
+          "updatedAt": "2026-11-26T16:31:54.317Z"
+        },
+        {
+          "userId": "user-seed-david",
+          "rating": 4,
+          "updatedAt": "2026-11-26T16:31:54.317Z"
+        }
+      ],
+      "averageRating": 4.3,
+      "ratingCount": 3
     },
     {
       "_id": "course-data-privacy",
@@ -406,7 +449,21 @@
             }
           ]
         }
-      ]
+      ],
+      "ratings": [
+        {
+          "userId": "user-seed-elena",
+          "rating": 5,
+          "updatedAt": "2026-11-26T16:31:54.317Z"
+        },
+        {
+          "userId": "user-seed-marcus",
+          "rating": 5,
+          "updatedAt": "2026-11-26T16:31:54.317Z"
+        }
+      ],
+      "averageRating": 5,
+      "ratingCount": 2
     }
   ],
   "users": [

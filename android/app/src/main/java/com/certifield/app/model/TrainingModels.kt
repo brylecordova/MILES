@@ -80,6 +80,9 @@ data class Course(
     val published: Boolean = true,
     val modules: List<CourseModule> = emptyList(),
     val certificateDesign: CertificateDesign? = null,
+    val averageRating: Double = 0.0,
+    val ratingCount: Int = 0,
+    val userRating: Int? = null,
     val createdAt: String = "",
     val updatedAt: String = "",
 )

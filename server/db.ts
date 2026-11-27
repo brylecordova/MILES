@@ -132,11 +132,42 @@ class DatabaseRepository {
         if (seed.submissions.length) await this.col<CourseSubmission>('submissions').insertMany(seed.submissions);
         if (seed.certificates.length) await this.col<CertificateRecord>('certificates').insertMany(seed.certificates);
       }
+      const seedCoursesById = new Map(getSeedCourses().map((c) => [c._id, c]));
+      for (const [seedId, seedCourse] of seedCoursesById.entries()) {
+        const existing = await this.col<Course>('courses').findOne({ _id: seedId });
+        if (existing && existing.ratings === undefined && seedCourse.ratings) {
+          await this.col<Course>('courses').updateOne(
+            { _id: seedId },
+            {
+              $set: {
+                ratings: seedCourse.ratings,
+                averageRating: seedCourse.averageRating,
+                ratingCount: seedCourse.ratingCount,
+              },
+            }
+          );
+        }
+      }
     } else {
       let changed = false;
       if (this.localData.courses.length === 0) {
         this.localData.courses = getSeedCourses();
         changed = true;
+      } else {
+        const seedCoursesById = new Map(getSeedCourses().map((c) => [c._id, c]));
+        this.localData.courses = this.localData.courses.map((course) => {
+          const seedCourse = seedCoursesById.get(course._id);
+          if (seedCourse && course.ratings === undefined && seedCourse.ratings) {
+            changed = true;
+            return {
+              ...course,
+              ratings: seedCourse.ratings,
+              averageRating: seedCourse.averageRating,
+              ratingCount: seedCourse.ratingCount,
+            };
+          }
+          return course;
+        });
       }
       if (this.localData.users.length === 0 && this.localData.submissions.length === 0) {
         const seed = getSeedAnalyticsData();
@@ -397,6 +428,24 @@ class DatabaseRepository {
       return this.col<CertificateRecord>('certificates').findOne({ _id: id });
     }
     return this.localData.certificates.find((c) => c._id === id) ?? null;
+  }
+
+  async getCertificateByCode(code: string): Promise<CertificateRecord | null> {
+    const normalized = code.trim().toUpperCase();
+    if (!normalized) return null;
+    if (this.mode === 'mongodb') {
+      const exact = await this.col<CertificateRecord>('certificates').findOne({
+        certificateCode: normalized,
+      });
+      if (exact) return exact;
+      const all = await this.col<CertificateRecord>('certificates').find({}).toArray();
+      return all.find((c) => c.certificateCode.trim().toUpperCase() === normalized) ?? null;
+    }
+    return (
+      this.localData.certificates.find(
+        (c) => c.certificateCode.trim().toUpperCase() === normalized
+      ) ?? null
+    );
   }
 
   async listAllCertificates(): Promise<CertificateRecord[]> {

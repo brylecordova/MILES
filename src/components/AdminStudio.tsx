@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import {
+  AlertCircle,
   ArrowDown,
   ArrowUp,
+  Award,
   BarChart3,
   BookOpen,
   CheckCircle2,
   ClipboardList,
+  Clock,
   Download,
   ExternalLink,
   Film,
@@ -17,6 +20,7 @@ import {
   Smartphone,
   Trash2,
   Upload,
+  X,
   XCircle,
 } from 'lucide-react';
 import type {
@@ -140,6 +144,22 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   const [selectedSub, setSelectedSub] = useState<CourseSubmission | null>(null);
   const [reviewFeedback, setReviewFeedback] = useState('');
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [pendingReviewDecision, setPendingReviewDecision] = useState<'approved' | 'rejected' | null>(
+    null
+  );
+  const [reviewResultBanner, setReviewResultBanner] = useState<{
+    type: 'approved' | 'rejected' | 'error';
+    message: string;
+    certificateCode?: string;
+  } | null>(null);
+  const [confirmDeleteCourseId, setConfirmDeleteCourseId] = useState<string | null>(null);
+  const [deletingCourseId, setDeletingCourseId] = useState<string | null>(null);
+  const [adminNotice, setAdminNotice] = useState<{
+    type: 'success' | 'error';
+    title: string;
+    message: string;
+    certificateCode?: string;
+  } | null>(null);
 
   // System Branding & App Distribution State
   const [brandingDraft, setBrandingDraft] = useState<Omit<SystemBranding, 'updatedAt'>>({
@@ -271,21 +291,49 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
       await refreshAdminData();
       await onCoursesMutated();
       setEditorSuccess('Course saved to database.');
+      setAdminNotice({
+        type: 'success',
+        title: 'Course Saved',
+        message: `"${draft.title.trim()}" has been saved and synced to the catalog.`,
+      });
     } catch (err) {
-      setEditorError(err instanceof Error ? err.message : 'Failed to save course.');
+      const msg = err instanceof Error ? err.message : 'Failed to save course.';
+      setEditorError(msg);
+      setAdminNotice({
+        type: 'error',
+        title: 'Save Failed',
+        message: msg,
+      });
     } finally {
       setSavingCourse(false);
     }
   }
 
-  async function handleDeleteCourse(id: string) {
-    await api.deleteCourse(id);
-    if (editingCourseId === id) {
-      setEditingCourseId(null);
-      setDraft(null);
+  async function handleDeleteCourse(course: Course) {
+    setDeletingCourseId(course._id);
+    try {
+      await api.deleteCourse(course._id);
+      if (editingCourseId === course._id) {
+        setEditingCourseId(null);
+        setDraft(null);
+      }
+      setConfirmDeleteCourseId(null);
+      await refreshAdminData();
+      await onCoursesMutated();
+      setAdminNotice({
+        type: 'success',
+        title: 'Course Deleted',
+        message: `"${course.title}" was removed from the training catalog.`,
+      });
+    } catch (err) {
+      setAdminNotice({
+        type: 'error',
+        title: 'Delete Failed',
+        message: err instanceof Error ? err.message : 'Failed to delete course.',
+      });
+    } finally {
+      setDeletingCourseId(null);
     }
-    await refreshAdminData();
-    await onCoursesMutated();
   }
 
   async function handleApkFileSelected(file: File) {
@@ -333,11 +381,22 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     try {
       const res = await api.updateSystemBranding(brandingDraft);
       onBrandingUpdated(res.branding);
-      setBrandingSuccess(
-        'System branding saved. Android app resources (app_name & launcher icons) and live Android clients are now synced.'
-      );
+      const successMsg =
+        'System branding saved. Android app resources (app_name & launcher icons) and live Android clients are now synced.';
+      setBrandingSuccess(successMsg);
+      setAdminNotice({
+        type: 'success',
+        title: 'Branding & App Distribution Saved',
+        message: successMsg,
+      });
     } catch (err) {
-      setBrandingError(err instanceof Error ? err.message : 'Failed to save system branding.');
+      const msg = err instanceof Error ? err.message : 'Failed to save system branding.';
+      setBrandingError(msg);
+      setAdminNotice({
+        type: 'error',
+        title: 'Branding Save Failed',
+        message: msg,
+      });
     } finally {
       setSavingBranding(false);
     }
@@ -346,12 +405,54 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   async function handleReviewDecision(decision: 'approved' | 'rejected') {
     if (!selectedSub) return;
     setReviewLoading(true);
+    setReviewResultBanner(null);
     try {
       const res = await api.reviewSubmission(selectedSub._id, decision, reviewFeedback);
       setSelectedSub(res.submission);
+      setPendingReviewDecision(null);
       setSubmissions((prev) =>
         prev.map((s) => (s._id === res.submission._id ? res.submission : s))
       );
+      if (decision === 'approved') {
+        const certCode = res.certificate?.certificateCode;
+        const msg = certCode
+          ? `Approved ${res.submission.userName}'s assessment and issued official certificate ${certCode}.`
+          : `Approved ${res.submission.userName}'s assessment and confirmed certificate eligibility.`;
+        setReviewResultBanner({
+          type: 'approved',
+          message: msg,
+          certificateCode: certCode,
+        });
+        setAdminNotice({
+          type: 'success',
+          title: 'Certificate Approved & Issued',
+          message: msg,
+          certificateCode: certCode,
+        });
+      } else {
+        const msg = `Rejected ${res.submission.userName}'s submission for "${res.submission.courseTitle}". No certificate was issued.`;
+        setReviewResultBanner({
+          type: 'rejected',
+          message: msg,
+        });
+        setAdminNotice({
+          type: 'success',
+          title: 'Submission Rejected',
+          message: msg,
+        });
+      }
+      await refreshAdminData();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to update submission review.';
+      setReviewResultBanner({
+        type: 'error',
+        message: msg,
+      });
+      setAdminNotice({
+        type: 'error',
+        title: 'Review Action Failed',
+        message: msg,
+      });
     } finally {
       setReviewLoading(false);
     }
@@ -601,11 +702,13 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   }
 
   const pendingCount = submissions.filter((s) => s.status === 'pending_review').length;
+  const approvedCount = submissions.filter((s) => s.status === 'approved').length;
+  const rejectedCount = submissions.filter((s) => s.status === 'rejected').length;
   const filteredSubs =
     subFilter === 'all' ? submissions : submissions.filter((s) => s.status === subFilter);
 
   return (
-    <div className="grid gap-6 pb-16 lg:grid-cols-[240px_1fr]">
+    <div className="grid gap-6 pb-16 lg:grid-cols-[260px_1fr]">
       {/* Admin Left Sidebar */}
       <aside className={`p-4 lg:sticky lg:top-20 lg:self-start ${cardCls}`}>
         <p className="px-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -618,6 +721,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
               setAdminTab('analytics');
               setDraft(null);
               setSelectedSub(null);
+              setPendingReviewDecision(null);
             }}
             className={`flex min-h-[44px] flex-1 items-center gap-2.5 rounded-xl px-3 text-sm font-semibold transition-colors ${
               adminTab === 'analytics'
@@ -633,6 +737,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             onClick={() => {
               setAdminTab('courses');
               setSelectedSub(null);
+              setPendingReviewDecision(null);
             }}
             className={`flex min-h-[44px] flex-1 items-center gap-2.5 rounded-xl px-3 text-sm font-semibold transition-colors ${
               adminTab === 'courses'
@@ -648,10 +753,16 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             onClick={() => {
               setAdminTab('submissions');
               setDraft(null);
+              setPendingReviewDecision(null);
+              if (pendingCount > 0 && !selectedSub) {
+                setSubFilter('pending_review');
+              }
             }}
-            className={`flex min-h-[44px] flex-1 items-center justify-between rounded-xl px-3 text-sm font-semibold transition-colors ${
+            className={`flex min-h-[44px] flex-1 items-center justify-between gap-2 rounded-xl px-3 text-sm font-semibold transition-colors ${
               adminTab === 'submissions'
                 ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
+                : pendingCount > 0
+                ? 'border border-amber-300/80 bg-amber-50/75 text-amber-950 hover:bg-amber-100/80 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-900/50'
                 : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
             }`}
           >
@@ -659,7 +770,16 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
               <ClipboardList className="h-4 w-4" />
               <span>Submissions</span>
             </span>
-            <span className="font-mono-tabular text-xs">{pendingCount}</span>
+            {pendingCount > 0 ? (
+              <span className="font-mono-tabular inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-slate-950">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-950" />
+                {pendingCount} pending
+              </span>
+            ) : (
+              <span className="font-mono-tabular shrink-0 rounded-md bg-slate-200/80 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                0
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -667,6 +787,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
               setAdminTab('branding');
               setDraft(null);
               setSelectedSub(null);
+              setPendingReviewDecision(null);
               setBrandingError(null);
               setBrandingSuccess(null);
             }}
@@ -696,13 +817,96 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
       </aside>
 
       {/* Main Content Area */}
-      <div className="min-w-0">
+      <div className="min-w-0 space-y-5">
+        {/* Global Admin Confirmation / Error Notice */}
+        {adminNotice && (
+          <div
+            role={adminNotice.type === 'error' ? 'alert' : 'status'}
+            className={`flex items-start justify-between gap-3 rounded-2xl border px-4 py-3.5 shadow-xs ${
+              adminNotice.type === 'error'
+                ? 'border-red-300 bg-red-50/95 text-red-900 dark:border-red-800/70 dark:bg-red-950/75 dark:text-red-100'
+                : 'border-emerald-300 bg-emerald-50/95 text-emerald-950 dark:border-emerald-800/70 dark:bg-emerald-950/75 dark:text-emerald-100'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              {adminNotice.type === 'error' ? (
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
+              ) : (
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              )}
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-bold">{adminNotice.title}</p>
+                  {adminNotice.certificateCode && (
+                    <span className="font-mono-tabular rounded-md border border-emerald-400/60 bg-white/80 px-2 py-0.5 text-xs font-bold text-emerald-900 dark:border-emerald-700 dark:bg-slate-900 dark:text-emerald-300">
+                      {adminNotice.certificateCode}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-0.5 text-xs leading-relaxed opacity-90">{adminNotice.message}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAdminNotice(null)}
+              aria-label="Dismiss notification"
+              className="rounded-lg p-1 opacity-70 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Prominent Pending Certificate Approval Banner */}
+        {pendingCount > 0 && !(adminTab === 'submissions' && selectedSub) && (
+          <section
+            aria-label="Pending certificate approvals"
+            className="flex flex-col justify-between gap-3 rounded-2xl border-2 border-amber-400/80 bg-amber-50/90 p-4 shadow-xs sm:flex-row sm:items-center dark:border-amber-600/70 dark:bg-amber-950/45"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-slate-950">
+                <Award className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/20 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-500/25 dark:text-amber-200">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-600 dark:bg-amber-400" />
+                    Action Required
+                  </span>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {pendingCount} Pending Certificate{pendingCount === 1 ? '' : 's'} Awaiting Admin Approval
+                  </h2>
+                </div>
+                <p className="mt-0.5 text-xs text-slate-700 dark:text-amber-100/80">
+                  Review learner assessment attempts and approve or reject certificate issuance.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setAdminTab('submissions');
+                setDraft(null);
+                setSelectedSub(null);
+                setSubFilter('pending_review');
+              }}
+              className="min-h-[40px] shrink-0 rounded-xl bg-amber-500 px-4 text-xs font-bold text-slate-950 hover:bg-amber-400"
+            >
+              Review Pending ({pendingCount})
+            </button>
+          </section>
+        )}
+
         {adminTab === 'analytics' && (
           <AdminAnalyticsDashboard
             report={analyticsReport}
             loading={analyticsLoading}
             onRefresh={refreshAdminData}
-            onOpenSubmissions={() => setAdminTab('submissions')}
+            onOpenSubmissions={() => {
+              setAdminTab('submissions');
+              setSelectedSub(null);
+              setSubFilter(pendingCount > 0 ? 'pending_review' : 'all');
+            }}
           />
         )}
 
@@ -772,7 +976,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -787,19 +991,44 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                           setDraft(cloned);
                           setEditorError(null);
                           setEditorSuccess(null);
+                          setConfirmDeleteCourseId(null);
                         }}
                         className="min-h-[40px] rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
                       >
                         Edit Curriculum &amp; Certificate
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCourse(course._id)}
-                        aria-label={`Delete ${course.title}`}
-                        className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-red-950/60 dark:hover:text-red-300"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      {confirmDeleteCourseId === course._id ? (
+                        <div className="flex items-center gap-1.5 rounded-xl border border-red-300 bg-red-50 px-2.5 py-1 dark:border-red-800 dark:bg-red-950/60">
+                          <span className="text-xs font-semibold text-red-800 dark:text-red-200">
+                            Delete course?
+                          </span>
+                          <button
+                            type="button"
+                            disabled={deletingCourseId === course._id}
+                            onClick={() => handleDeleteCourse(course)}
+                            className="min-h-[32px] rounded-lg bg-red-600 px-2.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-60"
+                          >
+                            {deletingCourseId === course._id ? 'Deleting...' : 'Confirm'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deletingCourseId === course._id}
+                            onClick={() => setConfirmDeleteCourseId(null)}
+                            className="min-h-[32px] rounded-lg px-2 text-xs font-semibold text-slate-700 hover:bg-white/70 dark:text-slate-200 dark:hover:bg-slate-800"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteCourseId(course._id)}
+                          aria-label={`Delete ${course.title}`}
+                          className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-red-950/60 dark:hover:text-red-300"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -811,18 +1040,28 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
         {/* COURSE & CURRICULUM BUILDER */}
         {adminTab === 'courses' && draft && (
           <form onSubmit={handleSaveCourse} className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => setDraft(null)}
-                className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                Back to Course List
-              </button>
+            <div
+              data-testid="course-editor-sticky-bar"
+              className="sticky top-[68px] z-20 flex items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white/95 px-4 py-2.5 shadow-sm backdrop-blur-md dark:border-slate-800/90 dark:bg-slate-900/95"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDraft(null)}
+                  className="min-h-[40px] shrink-0 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Back to Course List
+                </button>
+                <span className="hidden truncate text-xs font-semibold text-slate-500 sm:inline dark:text-slate-400">
+                  {editingCourseId
+                    ? `Editing: ${draft.title || 'Untitled Course'}`
+                    : `New Course: ${draft.title || 'Untitled Course'}`}
+                </span>
+              </div>
               <button
                 type="submit"
                 disabled={savingCourse}
-                className="flex min-h-[44px] items-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+                className="flex min-h-[42px] shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white shadow-xs hover:bg-blue-800 disabled:opacity-60 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
               >
                 <Save className="h-4 w-4" />
                 <span>{savingCourse ? 'Saving...' : 'Save Course'}</span>
@@ -1613,35 +1852,52 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
         {/* SUBMISSIONS & REVIEW QUEUE */}
         {adminTab === 'submissions' && !selectedSub && (
           <div className="space-y-5">
-            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex flex-col justify-between gap-3 xl:flex-row xl:items-center">
               <div>
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-                  Learner Submissions Queue
+                  Learner Submissions &amp; Certificate Approvals
                 </h1>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                  Inspect per-question attempt counts, essay responses, and approve or reject certificates.
+                  Inspect per-question attempt counts, essay responses, and approve or reject pending certificates.
                 </p>
               </div>
-              <div className="inline-flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+              <div className="inline-flex w-fit flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
                 {[
-                  { id: 'all', label: 'All' },
-                  { id: 'pending_review', label: 'Pending' },
-                  { id: 'approved', label: 'Approved' },
-                  { id: 'rejected', label: 'Rejected' },
-                ].map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setSubFilter(f.id as typeof subFilter)}
-                    className={`min-h-[36px] rounded-lg px-3 text-xs font-semibold ${
-                      subFilter === f.id
-                        ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-950 dark:text-white'
-                        : 'text-slate-600 dark:text-slate-300'
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
+                  { id: 'all', label: 'All', count: submissions.length },
+                  { id: 'pending_review', label: 'Pending Certificates', count: pendingCount },
+                  { id: 'approved', label: 'Approved', count: approvedCount },
+                  { id: 'rejected', label: 'Rejected', count: rejectedCount },
+                ].map((f) => {
+                  const isPendingTab = f.id === 'pending_review' && f.count > 0;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setSubFilter(f.id as typeof subFilter)}
+                      className={`inline-flex min-h-[36px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-semibold transition-colors ${
+                        subFilter === f.id
+                          ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-950 dark:text-white'
+                          : isPendingTab
+                          ? 'text-amber-800 hover:bg-amber-100/70 dark:text-amber-300 dark:hover:bg-amber-950/60'
+                          : 'text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      {isPendingTab && (
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+                      )}
+                      <span>{f.label}</span>
+                      <span
+                        className={`font-mono-tabular rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                          isPendingTab
+                            ? 'bg-amber-500/20 text-amber-900 dark:bg-amber-500/30 dark:text-amber-200'
+                            : 'bg-slate-200/80 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
+                        }`}
+                      >
+                        {f.count}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1651,58 +1907,75 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
               </div>
             ) : (
               <div className={`divide-y divide-slate-200 overflow-hidden dark:divide-slate-800 ${cardCls}`}>
-                {filteredSubs.map((sub) => (
-                  <div
-                    key={sub._id}
-                    className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"
-                  >
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <span
-                          className={`font-semibold ${
-                            sub.status === 'approved'
-                              ? 'text-emerald-700 dark:text-emerald-400'
-                              : sub.status === 'rejected'
-                              ? 'text-red-700 dark:text-red-400'
-                              : 'text-amber-700 dark:text-amber-400'
-                          }`}
-                        >
-                          {sub.status === 'approved'
-                            ? 'Approved'
-                            : sub.status === 'rejected'
-                            ? 'Rejected'
-                            : 'Pending Review'}
-                        </span>
-                        <span aria-hidden="true">·</span>
-                        <span className="font-mono-tabular font-semibold text-slate-900 dark:text-white">
-                          {sub.overallScore}%
-                        </span>
-                        <span aria-hidden="true">·</span>
-                        <span className="text-slate-500 dark:text-slate-400">
-                          {new Date(sub.submittedAt).toLocaleString()}
-                        </span>
-                      </div>
-                      <h2 className="mt-1 text-base font-bold text-slate-900 dark:text-white">
-                        {sub.userName}{' '}
-                        <span className="font-normal text-slate-500 dark:text-slate-400">
-                          ({sub.userEmail})
-                        </span>
-                      </h2>
-                      <p className="text-xs text-slate-600 dark:text-slate-300">{sub.courseTitle}</p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedSub(sub);
-                        setReviewFeedback(sub.adminFeedback ?? '');
-                      }}
-                      className="min-h-[42px] shrink-0 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+                {filteredSubs.map((sub) => {
+                  const isPending = sub.status === 'pending_review';
+                  const isApproved = sub.status === 'approved';
+                  return (
+                    <div
+                      key={sub._id}
+                      className={`flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center ${
+                        isPending
+                          ? 'border-l-4 border-l-amber-500 bg-amber-50/40 dark:bg-amber-950/15'
+                          : isApproved
+                          ? 'border-l-4 border-l-emerald-500'
+                          : 'border-l-4 border-l-red-500'
+                      }`}
                     >
-                      Inspect Tries &amp; Grade
-                    </button>
-                  </div>
-                ))}
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          {isPending ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100/90 px-2.5 py-0.5 font-bold text-amber-900 dark:border-amber-700/70 dark:bg-amber-950/80 dark:text-amber-200">
+                              <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                              Pending Certificate Approval
+                            </span>
+                          ) : isApproved ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Approved · Certificate Issued
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2.5 py-0.5 font-bold text-red-800 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300">
+                              <XCircle className="h-3.5 w-3.5" />
+                              Rejected
+                            </span>
+                          )}
+                          <span className="font-mono-tabular rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-900 dark:bg-slate-800 dark:text-white">
+                            Score: {sub.overallScore}%
+                          </span>
+                          <span className="text-slate-500 dark:text-slate-400">
+                            {new Date(sub.submittedAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <h2 className="mt-1.5 text-base font-bold text-slate-900 dark:text-white">
+                          {sub.userName}{' '}
+                          <span className="font-normal text-slate-500 dark:text-slate-400">
+                            ({sub.userEmail})
+                          </span>
+                        </h2>
+                        <p className="text-xs text-slate-600 dark:text-slate-300">
+                          {sub.courseTitle} · <span className="font-medium">{sub.certificateTitle}</span>
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedSub(sub);
+                          setReviewFeedback(sub.adminFeedback ?? '');
+                          setPendingReviewDecision(null);
+                          setReviewResultBanner(null);
+                        }}
+                        className={`min-h-[42px] shrink-0 rounded-xl px-4 text-xs font-bold transition-colors ${
+                          isPending
+                            ? 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+                            : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
+                        }`}
+                      >
+                        {isPending ? 'Review & Issue Certificate' : 'Inspect Review Details'}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1713,13 +1986,54 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           <div className="space-y-6">
             <button
               type="button"
-              onClick={() => setSelectedSub(null)}
+              onClick={() => {
+                setSelectedSub(null);
+                setPendingReviewDecision(null);
+                setReviewResultBanner(null);
+              }}
               className="min-h-[42px] rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Back to Submissions List
             </button>
 
             <section className={`p-6 ${cardCls}`}>
+              {/* Clear Certificate Status Indicator Banner */}
+              <div
+                className={`mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs font-semibold ${
+                  selectedSub.status === 'pending_review'
+                    ? 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-700/70 dark:bg-amber-950/60 dark:text-amber-100'
+                    : selectedSub.status === 'approved'
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200'
+                    : 'border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/60 dark:text-red-200'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  {selectedSub.status === 'pending_review' ? (
+                    <>
+                      <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      <span>
+                        Pending Certificate Approval — Inspect answers below and confirm whether to issue a certificate.
+                      </span>
+                    </>
+                  ) : selectedSub.status === 'approved' ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      <span>Approved — Official Certificate Issued for this submission.</span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                      <span>Submission Rejected — Certificate was not issued.</span>
+                    </>
+                  )}
+                </span>
+                {selectedSub.reviewedAt && (
+                  <span className="text-[11px] opacity-80">
+                    Reviewed {new Date(selectedSub.reviewedAt).toLocaleString()}
+                  </span>
+                )}
+              </div>
+
               <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4 dark:border-slate-800">
                 <div>
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white">
@@ -1743,7 +2057,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                     {selectedSub.overallScore}%
                   </div>
                   <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    Status: {selectedSub.status.replace('_', ' ')}
+                    Certificate: {selectedSub.certificateTitle}
                   </div>
                 </div>
               </div>
@@ -1808,26 +2122,105 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   placeholder="Great accuracy on safety procedures..."
                   className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    disabled={reviewLoading}
-                    onClick={() => handleReviewDecision('approved')}
-                    className="flex min-h-[44px] items-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+
+                {reviewResultBanner && (
+                  <div
+                    role={reviewResultBanner.type === 'error' ? 'alert' : 'status'}
+                    className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 text-xs font-medium ${
+                      reviewResultBanner.type === 'approved'
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200'
+                        : reviewResultBanner.type === 'rejected'
+                        ? 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200'
+                        : 'border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/60 dark:text-red-200'
+                    }`}
                   >
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span>Approve &amp; Issue Certificate</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={reviewLoading}
-                    onClick={() => handleReviewDecision('rejected')}
-                    className="flex min-h-[44px] items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-900/50"
+                    {reviewResultBanner.type === 'approved' ? (
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    ) : reviewResultBanner.type === 'rejected' ? (
+                      <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                    ) : (
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+                    )}
+                    <div>
+                      <p className="font-bold">{reviewResultBanner.message}</p>
+                      {reviewResultBanner.certificateCode && (
+                        <p className="font-mono-tabular mt-1 text-[11px]">
+                          Issued Certificate ID: {reviewResultBanner.certificateCode}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {pendingReviewDecision ? (
+                  <div
+                    className={`flex flex-col justify-between gap-3 rounded-xl border p-4 sm:flex-row sm:items-center ${
+                      pendingReviewDecision === 'approved'
+                        ? 'border-emerald-300 bg-emerald-50/90 dark:border-emerald-800 dark:bg-emerald-950/50'
+                        : 'border-red-300 bg-red-50/90 dark:border-red-800 dark:bg-red-950/50'
+                    }`}
                   >
-                    <XCircle className="h-4 w-4" />
-                    <span>Reject Submission</span>
-                  </button>
-                </div>
+                    <div className="text-xs">
+                      <p className="font-bold text-slate-900 dark:text-white">
+                        {pendingReviewDecision === 'approved'
+                          ? `Confirm Approval & Certificate Issuance for ${selectedSub.userName}?`
+                          : `Confirm Rejection of ${selectedSub.userName}'s Submission?`}
+                      </p>
+                      <p className="mt-0.5 text-slate-700 dark:text-slate-300">
+                        {pendingReviewDecision === 'approved'
+                          ? `An official verifiable certificate (${selectedSub.certificateTitle}) will be issued immediately.`
+                          : 'The learner will see your reviewer feedback and no certificate will be issued.'}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={reviewLoading}
+                        onClick={() => handleReviewDecision(pendingReviewDecision)}
+                        className={`min-h-[40px] rounded-xl px-4 text-xs font-bold text-white disabled:opacity-60 ${
+                          pendingReviewDecision === 'approved'
+                            ? 'bg-emerald-700 hover:bg-emerald-800'
+                            : 'bg-red-700 hover:bg-red-800'
+                        }`}
+                      >
+                        {reviewLoading
+                          ? 'Saving...'
+                          : pendingReviewDecision === 'approved'
+                          ? 'Confirm Approve & Issue'
+                          : 'Confirm Reject'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={reviewLoading}
+                        onClick={() => setPendingReviewDecision(null)}
+                        className="min-h-[40px] rounded-xl border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      disabled={reviewLoading}
+                      onClick={() => setPendingReviewDecision('approved')}
+                      className="flex min-h-[44px] items-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Approve &amp; Issue Certificate</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={reviewLoading}
+                      onClick={() => setPendingReviewDecision('rejected')}
+                      className="flex min-h-[44px] items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-900/50"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      <span>Reject Submission</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </section>
           </div>

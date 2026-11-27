@@ -126,6 +126,12 @@ export interface SystemBranding {
   updatedAt: string;
 }
 
+export interface CourseRatingEntry {
+  userId: string;
+  rating: number;
+  updatedAt: string;
+}
+
 export interface Course {
   _id: string;
   title: string;
@@ -137,6 +143,10 @@ export interface Course {
   published: boolean;
   modules: CourseModule[];
   certificateDesign?: CertificateDesign;
+  averageRating?: number;
+  ratingCount?: number;
+  userRating?: number;
+  ratings?: CourseRatingEntry[];
   createdAt: string;
   updatedAt: string;
 }
@@ -207,6 +217,18 @@ export interface CertificateRecord {
   issuedAt: string;
   emailedCount: number;
   lastEmailedAt?: string;
+  certificateDesign?: CertificateDesign;
+  systemIconUrl?: string;
+}
+
+export interface VerifiedCertificatePublic {
+  certificateCode: string;
+  userName: string;
+  courseTitle: string;
+  certificateTitle: string;
+  issuerName: string;
+  score: number;
+  issuedAt: string;
   certificateDesign?: CertificateDesign;
   systemIconUrl?: string;
 }

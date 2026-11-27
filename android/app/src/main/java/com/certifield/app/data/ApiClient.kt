@@ -28,6 +28,12 @@ private data class BrandingResponse(val branding: SystemBranding)
 private data class CoursesResponse(val courses: List<Course>)
 
 @Serializable
+private data class CourseResponse(val course: Course)
+
+@Serializable
+private data class RateCoursePayload(val rating: Int)
+
+@Serializable
 private data class SubmissionsResponse(val submissions: List<CourseSubmission>)
 
 @Serializable
@@ -105,8 +111,21 @@ class ApiClient(private val baseUrlProvider: () -> String) {
         postJson("/api/auth/login", mapOf("email" to email, "password" to password))
 
     suspend fun fetchCourses(): List<Course> = withContext(Dispatchers.IO) {
-        val req = Request.Builder().url(url("/api/courses")).build()
+        val req = Request.Builder()
+            .url(url("/api/courses"))
+            .apply { token?.let { header("Authorization", "Bearer $it") } }
+            .build()
         execute<CoursesResponse>(req).courses
+    }
+
+    suspend fun rateCourse(courseId: String, rating: Int): Course = withContext(Dispatchers.IO) {
+        val body = json.encodeToString(RateCoursePayload(rating = rating)).toRequestBody(jsonMedia)
+        val req = Request.Builder()
+            .url(url("/api/courses/$courseId/rate"))
+            .apply { token?.let { header("Authorization", "Bearer $it") } }
+            .post(body)
+            .build()
+        execute<CourseResponse>(req).course
     }
 
     suspend fun trackCourseDownload(courseId: String) = withContext(Dispatchers.IO) {

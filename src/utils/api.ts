@@ -5,6 +5,7 @@ import type {
   CourseSubmission,
   SystemBranding,
   UserAccount,
+  VerifiedCertificatePublic,
 } from '../types/training';
 
 let learnerToken: string | null = null;
@@ -93,7 +94,13 @@ export const api = {
     apiFetch<{ courses: Course[] }>(
       `/api/courses${includeDrafts ? '?includeDrafts=1' : ''}`,
       {},
-      includeDrafts ? 'admin' : 'none'
+      includeDrafts ? 'admin' : 'learner'
+    ),
+  rateCourse: (id: string, rating: number) =>
+    apiFetch<{ course: Course }>(
+      `/api/courses/${encodeURIComponent(id)}/rate`,
+      { method: 'POST', body: JSON.stringify({ rating }) },
+      'learner'
     ),
   createCourse: (course: Omit<Course, '_id' | 'createdAt' | 'updatedAt'>) =>
     apiFetch<{ course: Course }>(
@@ -148,6 +155,10 @@ export const api = {
     ),
 
   // Certificates
+  verifyCertificate: (code: string) =>
+    apiFetch<{ verified: boolean; certificate: VerifiedCertificatePublic }>(
+      `/api/certificates/verify/${encodeURIComponent(code)}`
+    ),
   listMyCertificates: () =>
     apiFetch<{ certificates: CertificateRecord[] }>('/api/certificates/mine', {}, 'learner'),
   emailCertificate: (id: string, recipientEmail: string, pdfBase64: string) =>

@@ -203,7 +203,7 @@ class OfflineCourseStore(private val context: Context) {
                     if (resp.isSuccessful) {
                         val bytes = resp.body?.bytes()
                         if (bytes != null) {
-                            val ext = rawUrl.substringAfterLast('.', "bin").take(5)
+                            val ext = rawUrl.substringBefore('?').substringAfterLast('.', "bin").take(5)
                             val hash = sha256(rawUrl).take(16)
                             val outFile = File(mediaDir, "${course._id}_$hash.$ext")
                             outFile.writeBytes(bytes)
@@ -250,6 +250,37 @@ class OfflineCourseStore(private val context: Context) {
         val prog = loadProgressMap().toMutableMap()
         prog.remove(courseId)
         progressFile.writeText(json.encodeToString(prog))
+    }
+
+    fun syncDownloadedCoursesMetadata(remoteCourses: List<Course>) {
+        if (remoteCourses.isEmpty()) return
+        val remoteById = remoteCourses.associateBy { it._id }
+        val pkgs = loadPackages()
+        if (pkgs.isEmpty()) return
+        var changed = false
+        val updated = pkgs.map { pkg ->
+            val remote = remoteById[pkg.courseId]
+            if (remote != null && (
+                    pkg.course.averageRating != remote.averageRating ||
+                    pkg.course.ratingCount != remote.ratingCount ||
+                    pkg.course.userRating != remote.userRating
+                )
+            ) {
+                changed = true
+                pkg.copy(
+                    course = pkg.course.copy(
+                        averageRating = remote.averageRating,
+                        ratingCount = remote.ratingCount,
+                        userRating = remote.userRating,
+                    )
+                )
+            } else {
+                pkg
+            }
+        }
+        if (changed) {
+            packagesFile.writeText(json.encodeToString(updated))
+        }
     }
 
     fun loadProgressMap(): Map<String, CourseProgressState> {

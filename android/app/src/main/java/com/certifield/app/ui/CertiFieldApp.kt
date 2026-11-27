@@ -6,13 +6,22 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.view.ViewGroup
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,6 +32,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -51,6 +61,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.Instant
+import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -120,7 +131,8 @@ fun CertiFieldApp() {
     var certificates by remember { mutableStateOf(store.loadCachedCertificates()) }
     var downloadPct by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var activePlayerPkg by remember { mutableStateOf<DownloadedCoursePackage?>(null) }
-    var bannerMessage by remember { mutableStateOf<String?>(null) }
+    var statusFeedbackBanner by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    var ratingDialogCourse by remember { mutableStateOf<Course?>(null) }
 
     // Automatic OS Wi-Fi / mobile data detection only (no manual offline/online toggle)
     DisposableEffect(context) {
@@ -166,7 +178,6 @@ fun CertiFieldApp() {
     suspend fun refreshRemote() {
         if (!hasNetworkTransport) {
             isConnected = false
-            bannerMessage = "Wi-Fi / network is off; downloaded courses and saved account remain available."
             return
         }
         var healthy = api.checkHealth()
@@ -180,10 +191,8 @@ fun CertiFieldApp() {
         }
         isConnected = healthy
         if (!healthy) {
-            bannerMessage = "Server unreachable at $serverUrl; using offline cache."
             return
         }
-        bannerMessage = null
 
         runCatching {
             val remoteBranding = api.fetchBranding()
@@ -193,7 +202,10 @@ fun CertiFieldApp() {
         }
 
         runCatching {
-            courses = api.fetchCourses()
+            val fetched = api.fetchCourses()
+            courses = fetched
+            store.syncDownloadedCoursesMetadata(fetched)
+            downloadedPackages = store.loadPackages()
         }
 
         // Never auto-sign-out on transient failures; keep cached credentials until manual logout
@@ -316,11 +328,11 @@ fun CertiFieldApp() {
                         Column {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .statusBarsPadding()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    .padding(horizontal = 10.dp, vertical = 10.dp),
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -336,7 +348,7 @@ fun CertiFieldApp() {
                                     )
                                     Text(
                                         text = branding.systemName.ifBlank { "CertiField" },
-                                        fontSize = 17.sp,
+                                        fontSize = 16.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -346,7 +358,7 @@ fun CertiFieldApp() {
 
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                                 ) {
                                     Surface(
                                         onClick = {
@@ -368,6 +380,25 @@ fun CertiFieldApp() {
                                         }
                                     }
 
+                                    if (!isConnected) {
+                                        Surface(
+                                            onClick = { showConnectionDialog = true },
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isDarkMode) Color(0xFF1E293B).copy(alpha = 0.85f) else Color(0xFFF8FAFC),
+                                            border = BorderStroke(1.dp, borderColor),
+                                            modifier = Modifier.size(34.dp),
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Default.WifiOff,
+                                                    contentDescription = "No internet connection",
+                                                    tint = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706),
+                                                    modifier = Modifier.size(17.dp),
+                                                )
+                                            }
+                                        }
+                                    }
+
                                     Surface(
                                         onClick = { showConnectionDialog = true },
                                         shape = RoundedCornerShape(10.dp),
@@ -380,18 +411,17 @@ fun CertiFieldApp() {
                                     ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(horizontal = 8.dp),
+                                            modifier = Modifier.padding(horizontal = 7.dp),
                                         ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(7.dp)
-                                                    .clip(CircleShape)
-                                                    .background(
-                                                        if (isConnected) Color(0xFF10B981)
-                                                        else Color(0xFFF59E0B)
-                                                    )
-                                            )
-                                            Spacer(Modifier.width(5.dp))
+                                            if (isConnected) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(7.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color(0xFF10B981))
+                                                )
+                                                Spacer(Modifier.width(5.dp))
+                                            }
                                             Text(
                                                 "CONNECTION",
                                                 fontSize = 9.5.sp,
@@ -413,7 +443,7 @@ fun CertiFieldApp() {
                                     ) {
                                         Box(
                                             contentAlignment = Alignment.Center,
-                                            modifier = Modifier.padding(horizontal = 9.dp),
+                                            modifier = Modifier.padding(horizontal = 8.dp),
                                         ) {
                                             Text(
                                                 text = user?.name?.split(" ")?.firstOrNull() ?: "Sign In",
@@ -439,56 +469,101 @@ fun CertiFieldApp() {
                     ) {
                         Column {
                             HorizontalDivider(color = borderColor)
-                            Row(
+                            BoxWithConstraints(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .navigationBarsPadding()
-                                    .padding(horizontal = 4.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                                    .padding(horizontal = 6.dp, vertical = 6.dp),
                             ) {
-                                LearnerTab.entries.forEach { tab ->
-                                    val selected = activeTab == tab
-                                    val icon = when (tab) {
-                                        LearnerTab.AVAILABLE -> Icons.Default.MenuBook
-                                        LearnerTab.DOWNLOADED -> Icons.Default.DownloadDone
-                                        LearnerTab.FINISHED -> Icons.Default.CheckCircle
-                                        LearnerTab.CERTIFICATES -> Icons.Default.WorkspacePremium
-                                        LearnerTab.STATS -> Icons.Default.BarChart
-                                    }
-                                    Surface(
-                                        onClick = {
-                                            activeTab = tab
-                                            scope.launch { refreshRemote() }
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (selected) brandAccent.copy(alpha = if (isDarkMode) 0.16f else 0.11f)
-                                        else Color.Transparent,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(54.dp),
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center,
-                                            modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
+                                val tabCount = LearnerTab.entries.size
+                                val tabWidth = maxWidth / tabCount
+                                val indicatorOffset by animateDpAsState(
+                                    targetValue = tabWidth * activeTab.ordinal,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                    label = "bottom_nav_indicator_offset",
+                                )
+
+                                Box(
+                                    modifier = Modifier
+                                        .offset(x = indicatorOffset)
+                                        .width(tabWidth)
+                                        .height(54.dp)
+                                        .padding(horizontal = 2.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(
+                                            brandAccent.copy(alpha = if (isDarkMode) 0.18f else 0.12f)
+                                        ),
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    LearnerTab.entries.forEach { tab ->
+                                        val selected = activeTab == tab
+                                        val icon = when (tab) {
+                                            LearnerTab.AVAILABLE -> Icons.Default.MenuBook
+                                            LearnerTab.DOWNLOADED -> Icons.Default.DownloadDone
+                                            LearnerTab.FINISHED -> Icons.Default.CheckCircle
+                                            LearnerTab.CERTIFICATES -> Icons.Default.WorkspacePremium
+                                            LearnerTab.STATS -> Icons.Default.BarChart
+                                        }
+                                        val tabTint by animateColorAsState(
+                                            targetValue = if (selected) brandAccent else textSecondary,
+                                            animationSpec = tween(durationMillis = 220),
+                                            label = "tab_tint_${tab.name}",
+                                        )
+                                        val iconScale by animateFloatAsState(
+                                            targetValue = if (selected) 1.12f else 1.0f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessMedium,
+                                            ),
+                                            label = "tab_scale_${tab.name}",
+                                        )
+                                        Surface(
+                                            onClick = {
+                                                if (activeTab != tab) {
+                                                    activeTab = tab
+                                                    scope.launch { refreshRemote() }
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color.Transparent,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(54.dp),
                                         ) {
-                                            Icon(
-                                                imageVector = icon,
-                                                contentDescription = tab.label,
-                                                tint = if (selected) brandAccent else textSecondary,
-                                                modifier = Modifier.size(20.dp),
-                                            )
-                                            Spacer(Modifier.height(3.dp))
-                                            Text(
-                                                text = tab.label,
-                                                maxLines = 1,
-                                                softWrap = false,
-                                                overflow = TextOverflow.Ellipsis,
-                                                fontSize = 11.sp,
-                                                lineHeight = 12.sp,
-                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (selected) brandAccent else textSecondary,
-                                            )
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(horizontal = 2.dp),
+                                            ) {
+                                                Icon(
+                                                    imageVector = icon,
+                                                    contentDescription = tab.label,
+                                                    tint = tabTint,
+                                                    modifier = Modifier
+                                                        .size(20.dp)
+                                                        .scale(iconScale),
+                                                )
+                                                Spacer(Modifier.height(3.dp))
+                                                Text(
+                                                    text = tab.label,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    fontSize = 11.sp,
+                                                    lineHeight = 12.sp,
+                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = tabTint,
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -503,26 +578,81 @@ fun CertiFieldApp() {
                         .padding(padding)
                         .padding(horizontal = 16.dp),
                 ) {
-                    bannerMessage?.let { msg ->
+                    statusFeedbackBanner?.let { (isSuccess, msg) ->
                         Surface(
-                            color = if (isDarkMode) Color(0xFF451A03).copy(alpha = 0.72f) else Color(0xFFFEF3C7),
+                            color = if (isSuccess) {
+                                if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.78f) else Color(0xFFECFDF5)
+                            } else {
+                                if (isDarkMode) Color(0xFF7F1D1D).copy(alpha = 0.75f) else Color(0xFFFEF2F2)
+                            },
                             border = BorderStroke(
                                 1.dp,
-                                if (isDarkMode) Color(0xFFB45309).copy(alpha = 0.6f) else Color(0xFFFDE68A)
+                                if (isSuccess) {
+                                    if (isDarkMode) Color(0xFF10B981).copy(alpha = 0.6f) else Color(0xFFA7F3D0)
+                                } else {
+                                    if (isDarkMode) Color(0xFFEF4444).copy(alpha = 0.6f) else Color(0xFFFECACA)
+                                }
                             ),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
                         ) {
-                            Text(
-                                text = msg,
-                                color = if (isDarkMode) Color(0xFFFDE68A) else Color(0xFF92400E),
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(12.dp),
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            ) {
+                                Icon(
+                                    imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = if (isSuccess) {
+                                        if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669)
+                                    } else {
+                                        if (isDarkMode) Color(0xFFFCA5A5) else Color(0xFFDC2626)
+                                    },
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Text(
+                                    text = msg,
+                                    color = if (isSuccess) {
+                                        if (isDarkMode) Color(0xFFD1FAE5) else Color(0xFF065F46)
+                                    } else {
+                                        if (isDarkMode) Color(0xFFFEE2E2) else Color(0xFF991B1B)
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                IconButton(
+                                    onClick = { statusFeedbackBanner = null },
+                                    modifier = Modifier.size(28.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Dismiss",
+                                        tint = textSecondary,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            }
                         }
                     }
 
-                    when (activeTab) {
+                    AnimatedContent(
+                        targetState = activeTab,
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        transitionSpec = {
+                            val forward = targetState.ordinal >= initialState.ordinal
+                            val enter = slideInHorizontally(animationSpec = tween(220)) { width ->
+                                if (forward) width / 8 else -width / 8
+                            } + fadeIn(animationSpec = tween(220))
+                            val exit = slideOutHorizontally(animationSpec = tween(180)) { width ->
+                                if (forward) -width / 10 else width / 10
+                            } + fadeOut(animationSpec = tween(160))
+                            enter togetherWith exit
+                        },
+                        label = "learner_tab_content",
+                    ) { tab ->
+                    when (tab) {
                         LearnerTab.AVAILABLE -> AvailableCoursesTab(
                             courses = courses,
                             serverUrl = serverUrl,
@@ -550,16 +680,27 @@ fun CertiFieldApp() {
                                     }
                                     downloadPct = downloadPct - course._id
                                     refreshLocal()
+                                    statusFeedbackBanner = true to "Saved \"${course.title}\" for offline study."
                                 }
                             },
                             onOpen = { courseId ->
                                 activePlayerPkg = downloadedPackages.firstOrNull { it.courseId == courseId }
+                            },
+                            onRateCourse = { course ->
+                                if (user == null) {
+                                    showAuthDialog = true
+                                } else if (!isConnected) {
+                                    statusFeedbackBanner = false to "Connect to Wi-Fi or your server to submit a course rating."
+                                } else {
+                                    ratingDialogCourse = course
+                                }
                             },
                         )
 
                         LearnerTab.DOWNLOADED -> DownloadedCoursesTab(
                             packages = downloadedPackages,
                             progressMap = progressMap,
+                            serverUrl = serverUrl,
                             isDarkMode = isDarkMode,
                             brandAccent = brandAccent,
                             cardBg = cardBg,
@@ -570,6 +711,15 @@ fun CertiFieldApp() {
                             onRemove = { courseId ->
                                 store.removeCourse(courseId)
                                 refreshLocal()
+                            },
+                            onRateCourse = { course ->
+                                if (user == null) {
+                                    showAuthDialog = true
+                                } else if (!isConnected) {
+                                    statusFeedbackBanner = false to "Connect to Wi-Fi or your server to submit a course rating."
+                                } else {
+                                    ratingDialogCourse = course
+                                }
                             },
                         )
 
@@ -606,7 +756,10 @@ fun CertiFieldApp() {
                                         store.removePendingSubmission(item.id)
                                         refreshLocal()
                                         refreshRemote()
-                                    }.onFailure { bannerMessage = it.message }
+                                        statusFeedbackBanner = true to "Submitted \"${item.courseTitle}\" for admin review."
+                                    }.onFailure {
+                                        statusFeedbackBanner = false to (it.message ?: "Unable to submit pending course.")
+                                    }
                                 }
                             },
                             onRequireAuth = { showAuthDialog = true },
@@ -635,6 +788,7 @@ fun CertiFieldApp() {
                             isDarkMode = isDarkMode,
                             brandAccent = brandAccent,
                         )
+                    }
                     }
                 }
             }
@@ -685,6 +839,24 @@ fun CertiFieldApp() {
                     store.saveServerUrl(normalizedUrl)
                     showConnectionDialog = false
                     scope.launch { refreshRemote() }
+                },
+            )
+        }
+
+        ratingDialogCourse?.let { targetCourse ->
+            CourseRatingDialog(
+                course = targetCourse,
+                api = api,
+                isDarkMode = isDarkMode,
+                brandAccent = brandAccent,
+                onDismiss = { ratingDialogCourse = null },
+                onRated = { updated ->
+                    val nextList = courses.map { if (it._id == updated._id) updated else it }
+                    courses = if (nextList.any { it._id == updated._id }) nextList else courses
+                    store.syncDownloadedCoursesMetadata(listOf(updated))
+                    downloadedPackages = store.loadPackages()
+                    ratingDialogCourse = null
+                    statusFeedbackBanner = true to "Rated \"${updated.title}\" ${updated.userRating ?: 5}★ (Avg ${String.format(Locale.US, "%.1f", updated.averageRating)}★ from ${updated.ratingCount} ratings)."
                 },
             )
         }
@@ -1003,6 +1175,43 @@ private fun ConnectionConfigDialog(
 }
 
 @Composable
+private fun CourseRatingRow(
+    course: Course,
+    isDarkMode: Boolean,
+    textSecondary: Color,
+) {
+    val starColor = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.Star,
+            contentDescription = null,
+            tint = if (course.ratingCount > 0) starColor else textSecondary.copy(alpha = 0.45f),
+            modifier = Modifier.size(16.dp),
+        )
+        Text(
+            text = if (course.ratingCount > 0) {
+                "${String.format(Locale.US, "%.1f", course.averageRating)} (${course.ratingCount})"
+            } else {
+                "No ratings yet"
+            },
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (course.ratingCount > 0) starColor else textSecondary,
+        )
+        course.userRating?.let { mine ->
+            Text(
+                text = "· Your rating: ${mine}★",
+                fontSize = 11.sp,
+                color = textSecondary,
+            )
+        }
+    }
+}
+
+@Composable
 private fun AvailableCoursesTab(
     courses: List<Course>,
     serverUrl: String,
@@ -1017,7 +1226,41 @@ private fun AvailableCoursesTab(
     textSecondary: Color,
     onDownload: (Course) -> Unit,
     onOpen: (String) -> Unit,
+    onRateCourse: (Course) -> Unit,
 ) {
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("All") }
+    var ratingFilter by remember { mutableStateOf("all") } // "all" | "four_plus" | "highest_rated" | "most_rated"
+
+    val categories = remember(courses) {
+        listOf("All") + courses.map { it.category.trim() }.filter { it.isNotEmpty() }.distinct().sorted()
+    }
+
+    val filteredCourses = remember(courses, searchQuery, selectedCategory, ratingFilter) {
+        val q = searchQuery.trim().lowercase()
+        val matched = courses.filter { course ->
+            val categoryMatch = selectedCategory == "All" || course.category == selectedCategory
+            val queryMatch = q.isEmpty() ||
+                course.title.lowercase().contains(q) ||
+                course.description.lowercase().contains(q) ||
+                course.category.lowercase().contains(q)
+            val ratingMatch = when (ratingFilter) {
+                "four_plus" -> course.ratingCount > 0 && course.averageRating >= 4.0
+                else -> true
+            }
+            categoryMatch && queryMatch && ratingMatch
+        }
+        when (ratingFilter) {
+            "highest_rated", "four_plus" -> matched.sortedWith(
+                compareByDescending<Course> { it.averageRating }.thenByDescending { it.ratingCount }
+            )
+            "most_rated" -> matched.sortedWith(
+                compareByDescending<Course> { it.ratingCount }.thenByDescending { it.averageRating }
+            )
+            else -> matched
+        }
+    }
+
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(bottom = 16.dp),
@@ -1026,11 +1269,79 @@ private fun AvailableCoursesTab(
             SectionHeaderBlock(
                 kicker = "OFFLINE CATALOG",
                 title = "Available Courses",
-                subtitle = "Download complete courses with videos & quizzes for offline field study.",
+                subtitle = "Search, filter by rating or topic, rate courses, and download for offline field study.",
                 accent = brandAccent,
                 textPrimary = textPrimary,
                 textSecondary = textSecondary,
             )
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search courses by title, topic, or category...") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = textSecondary,
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear search",
+                                    tint = textSecondary,
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                if (categories.size > 1) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(categories) { cat ->
+                            FilterChip(
+                                selected = selectedCategory == cat,
+                                onClick = { selectedCategory = cat },
+                                label = { Text(cat, maxLines = 1, fontSize = 12.sp) },
+                            )
+                        }
+                    }
+                }
+
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val ratingOptions = listOf(
+                        "all" to "All Ratings",
+                        "highest_rated" to "Highest Rated",
+                        "most_rated" to "Most Rated",
+                        "four_plus" to "4+ Stars",
+                    )
+                    items(ratingOptions) { (key, label) ->
+                        FilterChip(
+                            selected = ratingFilter == key,
+                            onClick = { ratingFilter = key },
+                            leadingIcon = if (key != "all") {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp),
+                                    )
+                                }
+                            } else null,
+                            label = { Text(label, maxLines = 1, fontSize = 12.sp) },
+                        )
+                    }
+                }
+            }
         }
 
         if (courses.isEmpty()) {
@@ -1049,8 +1360,37 @@ private fun AvailableCoursesTab(
                     )
                 }
             }
+        } else if (filteredCourses.isEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    border = BorderStroke(1.dp, borderColor),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(20.dp),
+                    ) {
+                        Text(
+                            text = "No courses match your search or filter.",
+                            color = textPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        TextButton(
+                            onClick = {
+                                searchQuery = ""
+                                selectedCategory = "All"
+                                ratingFilter = "all"
+                            },
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Text("Reset Search & Filters", color = brandAccent)
+                        }
+                    }
+                }
+            }
         } else {
-            items(courses, key = { it._id }) { course ->
+            items(filteredCourses, key = { it._id }) { course ->
                 val isDownloaded = downloadedIds.contains(course._id)
                 val pct = downloadPct[course._id]
                 val normalizedBase = ApiClient.normalizeConnectionUrl(serverUrl)
@@ -1087,24 +1427,19 @@ private fun AvailableCoursesTab(
                                 color = textPrimary,
                             )
                             Spacer(Modifier.height(6.dp))
+                            CourseRatingRow(
+                                course = course,
+                                isDarkMode = isDarkMode,
+                                textSecondary = textSecondary,
+                            )
+                            Spacer(Modifier.height(6.dp))
                             Text(
                                 course.description,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = textSecondary,
                             )
                             Spacer(Modifier.height(14.dp))
-                            if (isDownloaded) {
-                                Button(
-                                    onClick = { onOpen(course._id) },
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isDarkMode) Color(0xFF059669) else Color(0xFF15803D)
-                                    ),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                                ) {
-                                    Text("Saved Offline · Open Course", color = Color.White, fontWeight = FontWeight.Bold)
-                                }
-                            } else if (pct != null) {
+                            if (pct != null) {
                                 LinearProgressIndicator(
                                     progress = { pct / 100f },
                                     color = brandAccent,
@@ -1117,16 +1452,66 @@ private fun AvailableCoursesTab(
                                     color = textSecondary,
                                 )
                             } else {
-                                Button(
-                                    onClick = { onDownload(course) },
-                                    enabled = isConnected,
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
                                 ) {
-                                    Icon(Icons.Default.Download, contentDescription = null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(if (!isConnected) "Connect Wi-Fi to Download" else "Download for Offline")
+                                    if (isDownloaded) {
+                                        Button(
+                                            onClick = { onOpen(course._id) },
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (isDarkMode) Color(0xFF059669) else Color(0xFF15803D)
+                                            ),
+                                            modifier = Modifier.weight(1f).height(48.dp),
+                                        ) {
+                                            Text(
+                                                "Open Saved",
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                            )
+                                        }
+                                    } else {
+                                        Button(
+                                            onClick = { onDownload(course) },
+                                            enabled = isConnected,
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
+                                            modifier = Modifier.weight(1f).height(48.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Download,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                if (!isConnected) "Offline" else "Download",
+                                                maxLines = 1,
+                                            )
+                                        }
+                                    }
+                                    OutlinedButton(
+                                        onClick = { onRateCourse(course) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, borderColor),
+                                        modifier = Modifier.height(48.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Star,
+                                            contentDescription = "Rate course",
+                                            tint = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706),
+                                            modifier = Modifier.size(17.dp),
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            text = course.userRating?.let { "${it}★" } ?: "Rate",
+                                            maxLines = 1,
+                                            color = textPrimary,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1141,6 +1526,7 @@ private fun AvailableCoursesTab(
 private fun DownloadedCoursesTab(
     packages: List<DownloadedCoursePackage>,
     progressMap: Map<String, CourseProgressState>,
+    serverUrl: String,
     isDarkMode: Boolean,
     brandAccent: Color,
     cardBg: Color,
@@ -1149,14 +1535,42 @@ private fun DownloadedCoursesTab(
     textSecondary: Color,
     onOpen: (DownloadedCoursePackage) -> Unit,
     onRemove: (String) -> Unit,
+    onRateCourse: (Course) -> Unit,
 ) {
-    var filter by remember { mutableStateOf("all") }
-    val filtered = packages.filter { pkg ->
-        val status = progressMap[pkg.courseId]?.status ?: "not_started"
-        when (filter) {
-            "not_started" -> status == "not_started"
-            "in_progress" -> status == "in_progress" || status == "completed"
-            else -> true
+    var searchQuery by remember { mutableStateOf("") }
+    var statusFilter by remember { mutableStateOf("all") } // "all" | "not_started" | "in_progress" | "completed"
+    var ratingFilter by remember { mutableStateOf("all") } // "all" | "four_plus" | "highest_rated" | "most_rated"
+
+    val filtered = remember(packages, progressMap, searchQuery, statusFilter, ratingFilter) {
+        val q = searchQuery.trim().lowercase()
+        val matched = packages.filter { pkg ->
+            val status = progressMap[pkg.courseId]?.status ?: "not_started"
+            val statusOk = when (statusFilter) {
+                "not_started" -> status == "not_started"
+                "in_progress" -> status == "in_progress"
+                "completed" -> status == "completed"
+                else -> true
+            }
+            val queryOk = q.isEmpty() ||
+                pkg.course.title.lowercase().contains(q) ||
+                pkg.course.description.lowercase().contains(q) ||
+                pkg.course.category.lowercase().contains(q)
+            val ratingOk = when (ratingFilter) {
+                "four_plus" -> pkg.course.ratingCount > 0 && pkg.course.averageRating >= 4.0
+                else -> true
+            }
+            statusOk && queryOk && ratingOk
+        }
+        when (ratingFilter) {
+            "highest_rated", "four_plus" -> matched.sortedWith(
+                compareByDescending<DownloadedCoursePackage> { it.course.averageRating }
+                    .thenByDescending { it.course.ratingCount }
+            )
+            "most_rated" -> matched.sortedWith(
+                compareByDescending<DownloadedCoursePackage> { it.course.ratingCount }
+                    .thenByDescending { it.course.averageRating }
+            )
+            else -> matched
         }
     }
 
@@ -1170,20 +1584,104 @@ private fun DownloadedCoursesTab(
             textSecondary = textSecondary,
         )
 
-        Row(
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Search saved courses...") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search saved courses",
+                    tint = textSecondary,
+                )
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Clear search",
+                            tint = textSecondary,
+                        )
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        )
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(bottom = 6.dp),
+        ) {
+            val statusOptions = listOf(
+                "all" to "All",
+                "not_started" to "New",
+                "in_progress" to "In Progress",
+                "completed" to "Completed",
+            )
+            items(statusOptions) { (key, label) ->
+                FilterChip(
+                    selected = statusFilter == key,
+                    onClick = { statusFilter = key },
+                    label = { Text(label, maxLines = 1, fontSize = 12.sp) },
+                )
+            }
+        }
+
+        LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(bottom = 10.dp),
         ) {
-            FilterChip(selected = filter == "all", onClick = { filter = "all" }, label = { Text("All", maxLines = 1) })
-            FilterChip(selected = filter == "not_started", onClick = { filter = "not_started" }, label = { Text("New", maxLines = 1) })
-            FilterChip(selected = filter == "in_progress", onClick = { filter = "in_progress" }, label = { Text("Active", maxLines = 1) })
+            val ratingOptions = listOf(
+                "all" to "All Ratings",
+                "highest_rated" to "Highest Rated",
+                "most_rated" to "Most Rated",
+                "four_plus" to "4+ Stars",
+            )
+            items(ratingOptions) { (key, label) ->
+                FilterChip(
+                    selected = ratingFilter == key,
+                    onClick = { ratingFilter = key },
+                    leadingIcon = if (key != "all") {
+                        {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                            )
+                        }
+                    } else null,
+                    label = { Text(label, maxLines = 1, fontSize = 12.sp) },
+                )
+            }
         }
 
         if (filtered.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No saved courses in this filter.", color = textSecondary)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        if (packages.isEmpty()) "No courses saved offline yet."
+                        else "No saved courses match your search or filter.",
+                        color = textSecondary,
+                    )
+                    if (packages.isNotEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        TextButton(
+                            onClick = {
+                                searchQuery = ""
+                                statusFilter = "all"
+                                ratingFilter = "all"
+                            }
+                        ) {
+                            Text("Reset Search & Filters", color = brandAccent)
+                        }
+                    }
+                }
             }
         } else {
+            val normalizedBase = ApiClient.normalizeConnectionUrl(serverUrl)
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 16.dp),
@@ -1194,54 +1692,91 @@ private fun DownloadedCoursesTab(
                     val done = prog?.completedModuleIds?.size ?: 0
                     val status = prog?.status ?: "not_started"
 
+                    val localBannerPath = pkg.localMediaMap[pkg.course.bannerUrl]
+                    val bannerModel: Any? = when {
+                        !localBannerPath.isNullOrBlank() && File(localBannerPath).exists() -> File(localBannerPath)
+                        pkg.course.bannerUrl.startsWith("http") -> pkg.course.bannerUrl
+                        pkg.course.bannerUrl.isNotBlank() -> "$normalizedBase${pkg.course.bannerUrl}"
+                        else -> null
+                    }
+
                     Card(
                         colors = CardDefaults.cardColors(containerColor = cardBg),
                         border = BorderStroke(1.dp, borderColor),
                         shape = RoundedCornerShape(18.dp),
                     ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text(
-                                when (status) {
-                                    "completed" -> "COMPLETED · READY TO REVIEW"
-                                    "in_progress" -> "IN PROGRESS · $done / $total MODULES"
-                                    else -> "NOT STARTED"
-                                },
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = if (status == "completed") {
-                                    if (isDarkMode) Color(0xFF34D399) else Color(0xFF15803D)
-                                } else brandAccent,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                pkg.course.title,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = textPrimary,
-                            )
-                            Spacer(Modifier.height(10.dp))
-                            LinearProgressIndicator(
-                                progress = { done.toFloat() / total.toFloat() },
-                                color = brandAccent,
-                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)),
-                            )
-                            Spacer(Modifier.height(14.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = { onOpen(pkg) },
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.weight(1f).height(46.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
-                                ) {
-                                    Text(if (status == "not_started") "Start Course" else "Resume")
-                                }
-                                OutlinedButton(
-                                    onClick = { onRemove(pkg.courseId) },
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.height(46.dp),
-                                ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Remove")
+                        Column {
+                            if (bannerModel != null) {
+                                AsyncImage(
+                                    model = bannerModel,
+                                    contentDescription = pkg.course.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxWidth().height(148.dp),
+                                )
+                            }
+                            Column(Modifier.padding(16.dp)) {
+                                Text(
+                                    when (status) {
+                                        "completed" -> "${pkg.course.category.uppercase()} · COMPLETED · READY TO REVIEW"
+                                        "in_progress" -> "${pkg.course.category.uppercase()} · IN PROGRESS · $done / $total MODULES"
+                                        else -> "${pkg.course.category.uppercase()} · NOT STARTED"
+                                    },
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = if (status == "completed") {
+                                        if (isDarkMode) Color(0xFF34D399) else Color(0xFF15803D)
+                                    } else brandAccent,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    pkg.course.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = textPrimary,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                CourseRatingRow(
+                                    course = pkg.course,
+                                    isDarkMode = isDarkMode,
+                                    textSecondary = textSecondary,
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                LinearProgressIndicator(
+                                    progress = { done.toFloat() / total.toFloat() },
+                                    color = brandAccent,
+                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)),
+                                )
+                                Spacer(Modifier.height(14.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = { onOpen(pkg) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.weight(1f).height(46.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
+                                    ) {
+                                        Text(if (status == "not_started") "Start Course" else "Resume", maxLines = 1)
+                                    }
+                                    OutlinedButton(
+                                        onClick = { onRateCourse(pkg.course) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, borderColor),
+                                        modifier = Modifier.height(46.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Star,
+                                            contentDescription = "Rate",
+                                            tint = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706),
+                                            modifier = Modifier.size(17.dp),
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        onClick = { onRemove(pkg.courseId) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.height(46.dp),
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Remove")
+                                    }
                                 }
                             }
                         }
@@ -1535,6 +2070,69 @@ private fun CoursePlayerScreen(
     val cardBg = if (isDarkMode) Color(0xFF0B1222).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.96f)
     val borderColor = MaterialTheme.colorScheme.outline
 
+    val lessonListState = rememberLazyListState()
+    LaunchedEffect(mod?.id) {
+        lessonListState.scrollToItem(0)
+    }
+
+    val totalModules = maxOf(1, pkg.course.modules.size)
+    val validModuleIds = remember(pkg.course.modules) { pkg.course.modules.map { it.id }.toSet() }
+    val completedModulesCount = progress.completedModuleIds.count { validModuleIds.contains(it) }
+    val isCurrentCompleted = mod != null && progress.completedModuleIds.contains(mod.id)
+
+    val lessonScrollFraction by remember(lessonListState, mod?.id) {
+        derivedStateOf {
+            val info = lessonListState.layoutInfo
+            val totalItems = info.totalItemsCount
+            if (totalItems <= 0 || info.visibleItemsInfo.isEmpty()) {
+                0f
+            } else if (!lessonListState.canScrollForward) {
+                0.85f
+            } else {
+                val lastVisible = info.visibleItemsInfo.last().index + 1
+                ((lastVisible.toFloat() / totalItems.toFloat()) * 0.85f).coerceIn(0f, 0.85f)
+            }
+        }
+    }
+
+    val quizTotalQuestions = mod?.questions?.size ?: 0
+    val answeredQuestions = if (mod?.kind == "quiz") {
+        mod.questions.count { q ->
+            when (val ans = answers[q.id]) {
+                is QuizAnswerInput.SingleIndex -> true
+                is QuizAnswerInput.MultiIndices -> ans.indices.isNotEmpty()
+                is QuizAnswerInput.EssayText -> ans.text.isNotBlank()
+                null -> false
+            }
+        }
+    } else 0
+    val quizFraction = when {
+        mod?.kind != "quiz" -> 0f
+        feedbackBanner?.first == true -> 1f
+        quizTotalQuestions <= 0 -> 0f
+        else -> ((answeredQuestions.toFloat() / quizTotalQuestions.toFloat()) * 0.85f).coerceIn(0f, 0.85f)
+    }
+
+    val currentModuleContribution = when {
+        showSummary -> 0f
+        isCurrentCompleted -> 0f
+        mod?.kind == "lesson" -> lessonScrollFraction
+        mod?.kind == "quiz" -> quizFraction
+        else -> 0f
+    }
+
+    val overallProgress = if (showSummary) {
+        1f
+    } else {
+        ((completedModulesCount.toFloat() + currentModuleContribution) / totalModules.toFloat()).coerceIn(0f, 1f)
+    }
+    val animatedOverallProgress by animateFloatAsState(
+        targetValue = overallProgress,
+        animationSpec = tween(durationMillis = 280),
+        label = "course_player_progress",
+    )
+    val overallPercent = (overallProgress * 100f).toInt().coerceIn(0, 100)
+
     LaunchedEffect(mod?.id, showSummary) {
         if (!showSummary && mod?.kind == "lesson") {
             while (true) {
@@ -1593,6 +2191,67 @@ private fun CoursePlayerScreen(
                     }
                 },
             )
+        },
+        bottomBar = {
+            if (!showSummary) {
+                Surface(
+                    color = if (isDarkMode) Color(0xFF060B18).copy(alpha = 0.96f)
+                    else Color.White.copy(alpha = 0.96f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column {
+                        HorizontalDivider(color = borderColor)
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                val statusLabel = if (mod?.kind == "quiz") {
+                                    "Module ${progress.currentModuleIndex + 1} of $totalModules · Quiz $answeredQuestions/$quizTotalQuestions answered"
+                                } else {
+                                    "Module ${progress.currentModuleIndex + 1} of $totalModules · $completedModulesCount/$totalModules completed"
+                                }
+                                Text(
+                                    text = statusLabel,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = textSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                )
+                                Text(
+                                    text = "$overallPercent%",
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (overallPercent >= 100) {
+                                        if (isDarkMode) Color(0xFF34D399) else Color(0xFF15803D)
+                                    } else brandAccent,
+                                )
+                            }
+                            LinearProgressIndicator(
+                                progress = { animatedOverallProgress },
+                                color = if (overallPercent >= 100) {
+                                    if (isDarkMode) Color(0xFF34D399) else Color(0xFF15803D)
+                                } else brandAccent,
+                                trackColor = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFE2E8F0),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(7.dp)
+                                    .clip(RoundedCornerShape(999.dp)),
+                            )
+                        }
+                    }
+                }
+            }
         },
     ) { padding ->
         if (showSummary) {
@@ -1691,6 +2350,7 @@ private fun CoursePlayerScreen(
         val normalizedBase = ApiClient.normalizeConnectionUrl(serverUrl)
 
         LazyColumn(
+            state = lessonListState,
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -2114,3 +2774,125 @@ private fun AuthDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
+
+@Composable
+private fun CourseRatingDialog(
+    course: Course,
+    api: ApiClient,
+    isDarkMode: Boolean,
+    brandAccent: Color,
+    onDismiss: () -> Unit,
+    onRated: (Course) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var selectedRating by remember(course._id) { mutableIntStateOf(course.userRating ?: 5) }
+    var submitting by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val dialogBg = if (isDarkMode) Color(0xFF0F172A) else Color.White
+    val starActive = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706)
+    val starInactive = if (isDarkMode) Color(0xFF475569) else Color(0xFFCBD5E1)
+    val ratingLabel = when (selectedRating) {
+        1 -> "1 / 5 · Needs Improvement"
+        2 -> "2 / 5 · Fair"
+        3 -> "3 / 5 · Good"
+        4 -> "4 / 5 · Very Good"
+        else -> "5 / 5 · Excellent"
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!submitting) onDismiss() },
+        containerColor = dialogBg,
+        shape = RoundedCornerShape(20.dp),
+        title = {
+            Column {
+                Text(
+                    "COURSE RATING",
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = brandAccent,
+                )
+                Text(
+                    course.title,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = if (course.ratingCount > 0) {
+                        "Current rating: ${String.format(Locale.US, "%.1f", course.averageRating)} ★ (${course.ratingCount} ratings)"
+                    } else {
+                        "Be the first learner to rate this course."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                ) {
+                    (1..5).forEach { star ->
+                        IconButton(
+                            onClick = { selectedRating = star },
+                            enabled = !submitting,
+                        ) {
+                            Icon(
+                                imageVector = if (star <= selectedRating) Icons.Default.Star else Icons.Default.StarBorder,
+                                contentDescription = "$star stars",
+                                tint = if (star <= selectedRating) starActive else starInactive,
+                                modifier = Modifier.size(34.dp),
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = ratingLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = starActive,
+                )
+
+                error?.let {
+                    Text(it, color = Color(0xFFEF4444), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !submitting,
+                colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
+                onClick = {
+                    submitting = true
+                    error = null
+                    scope.launch {
+                        runCatching { api.rateCourse(course._id, selectedRating) }
+                            .onSuccess { updated ->
+                                submitting = false
+                                onRated(updated)
+                            }
+                            .onFailure { err ->
+                                submitting = false
+                                error = err.message ?: "Unable to save rating."
+                            }
+                    }
+                },
+            ) {
+                Text(if (submitting) "Saving..." else "Submit Rating")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                enabled = !submitting,
+                onClick = onDismiss,
+            ) { Text("Cancel") }
+        },
+    )
+}
+

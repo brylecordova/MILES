@@ -25,6 +25,16 @@ import {
   getDefaultCertificateDesign,
   getDefaultSystemBranding,
 } from './src/utils/certificateDefaults.ts';
+import {
+  isValidCertificateCodeFormat,
+  normalizeCertificateCode,
+  toPublicVerifiedCertificate,
+} from './src/utils/certificateVerification.ts';
+import {
+  applyCourseRating,
+  toPublicCourseWithRatings,
+  validateRatingValue,
+} from './src/utils/courseRating.ts';
 
 const PORT = 3000;
 
@@ -283,6 +293,9 @@ function sanitizeCourseInput(raw: Partial<Course>, existing?: Course): Course {
     published,
     modules,
     certificateDesign,
+    averageRating: existing?.averageRating ?? 0,
+    ratingCount: existing?.ratingCount ?? 0,
+    ratings: existing?.ratings ?? [],
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -582,7 +595,9 @@ async function startServer() {
     const wantDrafts = req.query.includeDrafts === '1';
     const payload = extractBearer(req);
     const includeDrafts = wantDrafts && payload?.role === 'admin';
-    const courses = await db.listCourses(includeDrafts);
+    const viewerUserId = payload?.role === 'learner' ? payload.sub : undefined;
+    const rawCourses = await db.listCourses(includeDrafts);
+    const courses = rawCourses.map((c) => toPublicCourseWithRatings(c, viewerUserId));
     res.json({ courses });
   });
 
@@ -592,14 +607,35 @@ async function startServer() {
       res.status(404).json({ error: 'Course not found.' });
       return;
     }
-    if (!course.published) {
-      const payload = extractBearer(req);
-      if (payload?.role !== 'admin') {
+    const payload = extractBearer(req);
+    if (!course.published && payload?.role !== 'admin') {
+      res.status(404).json({ error: 'Course not found.' });
+      return;
+    }
+    const viewerUserId = payload?.role === 'learner' ? payload.sub : undefined;
+    res.json({ course: toPublicCourseWithRatings(course, viewerUserId) });
+  });
+
+  app.post('/api/courses/:id/rate', requireLearner, async (req: AuthedRequest, res) => {
+    try {
+      const id = String(req.params.id || '').trim();
+      const validRating = validateRatingValue(Number(req.body?.rating));
+      if (validRating === null) {
+        res.status(400).json({ error: 'Rating must be a whole number from 1 to 5.' });
+        return;
+      }
+      const course = await db.getCourseById(id);
+      if (!course || !course.published) {
         res.status(404).json({ error: 'Course not found.' });
         return;
       }
+      const updated = applyCourseRating(course, req.learner!._id, validRating);
+      await db.updateCourse(id, updated);
+      res.json({ course: toPublicCourseWithRatings(updated, req.learner!._id) });
+    } catch (err) {
+      console.error('Course rating error:', err);
+      res.status(500).json({ error: 'Failed to save course rating.' });
     }
-    res.json({ course });
   });
 
   app.post('/api/courses', requireAdmin, async (req, res) => {
@@ -610,7 +646,7 @@ async function startServer() {
     }
     const course = sanitizeCourseInput(req.body);
     await db.createCourse(course);
-    res.status(201).json({ course });
+    res.status(201).json({ course: toPublicCourseWithRatings(course) });
   });
 
   app.put('/api/courses/:id', requireAdmin, async (req, res) => {
@@ -626,7 +662,7 @@ async function startServer() {
       return;
     }
     await db.updateCourse(id, updated);
-    res.json({ course: updated });
+    res.json({ course: toPublicCourseWithRatings(updated) });
   });
 
   app.delete('/api/courses/:id', requireAdmin, async (req, res) => {
@@ -920,6 +956,49 @@ async function startServer() {
   });
 
   // ---- Certificates & Email ----
+  app.get('/api/certificates/verify/:code', async (req, res) => {
+    try {
+      const normalized = normalizeCertificateCode(String(req.params.code || ''));
+      if (!isValidCertificateCodeFormat(normalized)) {
+        res.status(400).json({
+          verified: false,
+          error: 'Please enter a valid certificate code (e.g. CF-2026-9041B1).',
+        });
+        return;
+      }
+
+      const cert = await db.getCertificateByCode(normalized);
+      if (!cert) {
+        res.status(404).json({
+          verified: false,
+          error: `No issued certificate found matching code "${normalized}".`,
+        });
+        return;
+      }
+
+      const [course, branding] = await Promise.all([
+        cert.certificateDesign ? Promise.resolve(null) : db.getCourseById(cert.courseId),
+        db.getSystemBranding(),
+      ]);
+
+      const enriched: CertificateRecord = {
+        ...cert,
+        certificateDesign:
+          cert.certificateDesign ??
+          course?.certificateDesign ??
+          getDefaultCertificateDesign(cert.issuerName, cert.certificateTitle),
+      };
+
+      res.json({
+        verified: true,
+        certificate: toPublicVerifiedCertificate(enriched, branding.iconUrl),
+      });
+    } catch (err) {
+      console.error('Certificate verification error:', err);
+      res.status(500).json({ verified: false, error: 'Unable to verify certificate right now.' });
+    }
+  });
+
   app.get('/api/certificates/mine', requireLearner, async (req: AuthedRequest, res) => {
     const certificates = await db.listCertificatesByUser(req.learner!._id);
     res.json({ certificates });

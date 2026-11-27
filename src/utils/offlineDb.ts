@@ -3,6 +3,10 @@ import type {
   CourseProgressState,
   PendingOfflineSubmission,
 } from '../types/training';
+import {
+  removeCourseProgressEntryFromLocalStorage,
+  writeCourseProgressEntryToLocalStorage,
+} from './courseCatalog';
 
 const DB_NAME = 'certifield_offline_v1';
 const DB_VERSION = 1;
@@ -66,6 +70,7 @@ export async function removeDownloadedCourse(courseId: string): Promise<void> {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+  removeCourseProgressEntryFromLocalStorage(courseId);
 }
 
 export function collectCourseMediaUrls(course: Course): string[] {
@@ -124,8 +129,9 @@ export async function downloadCourseForOffline(
   const existingProgress = await idbReq<CourseProgressState | undefined>(
     tx.objectStore('progress').get(course._id)
   );
+  let createdInitialProgress: CourseProgressState | null = null;
   if (!existingProgress) {
-    const initialProgress: CourseProgressState = {
+    createdInitialProgress = {
       courseId: course._id,
       currentModuleIndex: 0,
       completedModuleIds: [],
@@ -137,13 +143,17 @@ export async function downloadCourseForOffline(
       status: 'not_started',
       updatedAt: new Date().toISOString(),
     };
-    tx.objectStore('progress').put(initialProgress);
+    tx.objectStore('progress').put(createdInitialProgress);
   }
 
   await new Promise<void>((resolve, reject) => {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+
+  if (createdInitialProgress) {
+    writeCourseProgressEntryToLocalStorage(createdInitialProgress);
+  }
 
   return pkg;
 }
@@ -167,6 +177,7 @@ export async function saveCourseProgress(progress: CourseProgressState): Promise
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+  writeCourseProgressEntryToLocalStorage(progress);
 }
 
 export async function listPendingSubmissions(): Promise<PendingOfflineSubmission[]> {

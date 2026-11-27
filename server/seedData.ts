@@ -14,6 +14,14 @@ export function getSeedCourses(): Course[] {
       certificateTitle: 'Certified Workplace Safety Specialist',
       issuerName: 'CertiField Safety Institute',
       published: true,
+      averageRating: 4.8,
+      ratingCount: 4,
+      ratings: [
+        { userId: 'user-seed-elena', rating: 5, updatedAt: now },
+        { userId: 'user-seed-marcus', rating: 5, updatedAt: now },
+        { userId: 'user-seed-priya', rating: 4, updatedAt: now },
+        { userId: 'user-seed-david', rating: 5, updatedAt: now },
+      ],
       createdAt: now,
       updatedAt: now,
       modules: [
@@ -226,6 +234,13 @@ export function getSeedCourses(): Course[] {
       certificateTitle: 'Certified Sterile Protocol Practitioner',
       issuerName: 'CertiField Clinical Board',
       published: true,
+      averageRating: 4.3,
+      ratingCount: 3,
+      ratings: [
+        { userId: 'user-seed-elena', rating: 5, updatedAt: now },
+        { userId: 'user-seed-priya', rating: 4, updatedAt: now },
+        { userId: 'user-seed-david', rating: 4, updatedAt: now },
+      ],
       createdAt: now,
       updatedAt: now,
       modules: [
@@ -340,6 +355,12 @@ export function getSeedCourses(): Course[] {
       certificateTitle: 'Certified Data Privacy Associate',
       issuerName: 'CertiField Trust Academy',
       published: true,
+      averageRating: 5.0,
+      ratingCount: 2,
+      ratings: [
+        { userId: 'user-seed-elena', rating: 5, updatedAt: now },
+        { userId: 'user-seed-marcus', rating: 5, updatedAt: now },
+      ],
       createdAt: now,
       updatedAt: now,
       modules: [

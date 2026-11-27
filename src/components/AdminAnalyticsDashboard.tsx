@@ -182,9 +182,12 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
             <button
               type="button"
               onClick={onOpenSubmissions}
-              className="min-h-[40px] whitespace-nowrap rounded-xl border border-amber-300 bg-amber-50 px-3.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-950/60 dark:text-amber-200 dark:hover:bg-amber-900/60"
+              className="flex min-h-[40px] items-center gap-2 whitespace-nowrap rounded-xl border-2 border-amber-400 bg-amber-100 px-3.5 text-xs font-bold text-amber-950 hover:bg-amber-200 dark:border-amber-600 dark:bg-amber-950/70 dark:text-amber-100 dark:hover:bg-amber-900/70"
             >
-              Review {overview.pendingReviews} Pending
+              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-600 dark:bg-amber-400" />
+              <span>
+                {overview.pendingReviews} Pending Certificate{overview.pendingReviews === 1 ? '' : 's'}
+              </span>
             </button>
           )}
           <button
