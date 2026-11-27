@@ -313,7 +313,7 @@ fun StatsDashboardScreen(
                     StatKpiCard(
                         label = "AVG QUIZ SCORE",
                         value = "${summary.avgScore}%",
-                        hint = "${summary.completedCount} completed · ${summary.certifiedCount} certified",
+                        hint = "${summary.completedCount} done / ${summary.certifiedCount} cert",
                         accent = brandAccent,
                         cardBg = cardBg,
                         borderColor = borderColor,
@@ -489,50 +489,22 @@ fun StatsDashboardScreen(
                                 .border(1.dp, borderColor, RoundedCornerShape(10.dp))
                                 .clip(RoundedCornerShape(10.dp)),
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(subSurfaceBg)
-                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                            ) {
-                                Text(
-                                    "Course",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = textSecondary,
-                                    modifier = Modifier.weight(2.2f),
-                                )
-                                Text(
-                                    "Read",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = textSecondary,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Text(
-                                    "Tries",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = textSecondary,
-                                    modifier = Modifier.weight(0.9f),
-                                )
-                                Text(
-                                    "Score",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = textSecondary,
-                                    modifier = Modifier.weight(0.9f),
-                                )
-                            }
-                            summary.courseRows.forEach { row ->
-                                HorizontalDivider(color = borderColor)
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
+                            summary.courseRows.forEachIndexed { idx, row ->
+                                if (idx > 0) {
+                                    HorizontalDivider(color = borderColor)
+                                }
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                                        .background(if (idx % 2 == 1) subSurfaceBg.copy(alpha = 0.45f) else Color.Transparent)
+                                        .padding(12.dp),
                                 ) {
-                                    Column(Modifier.weight(2.2f).padding(end = 6.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
                                         Text(
                                             row.courseTitle,
                                             style = MaterialTheme.typography.bodySmall,
@@ -540,35 +512,61 @@ fun StatsDashboardScreen(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                             color = textPrimary,
+                                            modifier = Modifier.weight(1f).padding(end = 8.dp),
                                         )
                                         Text(
-                                            row.statusLabel,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = textSecondary,
+                                            row.statusLabel.uppercase(),
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = brandAccent,
                                         )
                                     }
-                                    Text(
-                                        LearnerStatsCalculator.formatDuration(row.readingSeconds),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = textPrimary,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    Text(
-                                        if (row.avgQuizRetries > 0) "${row.avgQuizRetries}x" else "-",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = textPrimary,
-                                        modifier = Modifier.weight(0.9f),
-                                    )
-                                    Text(
-                                        if (row.score > 0) "${row.score}%" else "${row.completionPct}%",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold,
-                                        color = brandAccent,
-                                        modifier = Modifier.weight(0.9f),
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                "Reading",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = textSecondary,
+                                            )
+                                            Text(
+                                                LearnerStatsCalculator.formatDuration(row.readingSeconds),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = textPrimary,
+                                            )
+                                        }
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                "Avg Tries",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = textSecondary,
+                                            )
+                                            Text(
+                                                if (row.avgQuizRetries > 0) "${row.avgQuizRetries}x" else "-",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = textPrimary,
+                                            )
+                                        }
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                if (row.score > 0) "Score" else "Progress",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = textSecondary,
+                                            )
+                                            Text(
+                                                if (row.score > 0) "${row.score}%" else "${row.completionPct}%",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontWeight = FontWeight.Bold,
+                                                color = brandAccent,
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -637,21 +635,27 @@ private fun CourseBarChart(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         rows.forEach { row ->
             Column {
+                Text(
+                    row.courseTitle,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
-                        row.courseTitle,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f).padding(end = 8.dp),
+                        "Score: ${row.score}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = textSecondary,
                     )
                     Text(
-                        "${row.score}% · ${row.completionPct}% done",
+                        "Completion: ${row.completionPct}%",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
                         color = textSecondary,

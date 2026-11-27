@@ -45,6 +45,10 @@ import {
   setAdminToken,
   uploadAdminApk,
 } from '../utils/api';
+import {
+  ADMIN_NAV_CLUSTERS,
+  type AdminTabId,
+} from '../utils/adminNav';
 import { getDefaultCertificateDesign } from '../utils/certificateDefaults';
 import { AdminAnalyticsDashboard } from './AdminAnalyticsDashboard';
 import { CertificateDesigner } from './CertificateDesigner';
@@ -135,7 +139,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
-  const [adminTab, setAdminTab] = useState<'analytics' | 'courses' | 'submissions' | 'branding'>('analytics');
+  const [adminTab, setAdminTab] = useState<AdminTabId>('analytics');
   const [courses, setCourses] = useState<Course[]>([]);
   const [submissions, setSubmissions] = useState<CourseSubmission[]>([]);
   const [analyticsReport, setAnalyticsReport] = useState<AdminAnalyticsReport | null>(null);
@@ -707,102 +711,112 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   const filteredSubs =
     subFilter === 'all' ? submissions : submissions.filter((s) => s.status === subFilter);
 
+  function handleSelectAdminTab(tabId: AdminTabId) {
+    setAdminTab(tabId);
+    if (tabId !== 'courses') {
+      setDraft(null);
+    }
+    if (tabId !== 'submissions') {
+      setSelectedSub(null);
+      setPendingReviewDecision(null);
+    } else {
+      setPendingReviewDecision(null);
+      if (pendingCount > 0 && !selectedSub) {
+        setSubFilter('pending_review');
+      }
+    }
+    if (tabId === 'branding' || tabId === 'distribution') {
+      setBrandingError(null);
+      setBrandingSuccess(null);
+    }
+  }
+
   return (
-    <div className="grid gap-6 pb-16 lg:grid-cols-[260px_1fr]">
-      {/* Admin Left Sidebar */}
+    <div className="grid gap-6 pb-16 lg:grid-cols-[276px_1fr]">
+      {/* Admin Left Sidebar — Clustered Functional Navigation */}
       <aside className={`p-4 lg:sticky lg:top-20 lg:self-start ${cardCls}`}>
-        <p className="px-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-          {systemBranding.systemName} · /systemadministrator
-        </p>
-        <nav className="mt-3 flex flex-wrap gap-2 lg:flex-col">
-          <button
-            type="button"
-            onClick={() => {
-              setAdminTab('analytics');
-              setDraft(null);
-              setSelectedSub(null);
-              setPendingReviewDecision(null);
-            }}
-            className={`flex min-h-[44px] flex-1 items-center gap-2.5 rounded-xl px-3 text-sm font-semibold transition-colors ${
-              adminTab === 'analytics'
-                ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
-                : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
-            }`}
-          >
-            <BarChart3 className="h-4 w-4" />
-            <span>Analytics</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAdminTab('courses');
-              setSelectedSub(null);
-              setPendingReviewDecision(null);
-            }}
-            className={`flex min-h-[44px] flex-1 items-center gap-2.5 rounded-xl px-3 text-sm font-semibold transition-colors ${
-              adminTab === 'courses'
-                ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
-                : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
-            }`}
-          >
-            <BookOpen className="h-4 w-4" />
-            <span>Courses ({courses.length})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAdminTab('submissions');
-              setDraft(null);
-              setPendingReviewDecision(null);
-              if (pendingCount > 0 && !selectedSub) {
-                setSubFilter('pending_review');
-              }
-            }}
-            className={`flex min-h-[44px] flex-1 items-center justify-between gap-2 rounded-xl px-3 text-sm font-semibold transition-colors ${
-              adminTab === 'submissions'
-                ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
-                : pendingCount > 0
-                ? 'border border-amber-300/80 bg-amber-50/75 text-amber-950 hover:bg-amber-100/80 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-900/50'
-                : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <ClipboardList className="h-4 w-4" />
-              <span>Submissions</span>
-            </span>
-            {pendingCount > 0 ? (
-              <span className="font-mono-tabular inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-slate-950">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-950" />
-                {pendingCount} pending
-              </span>
-            ) : (
-              <span className="font-mono-tabular shrink-0 rounded-md bg-slate-200/80 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                0
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAdminTab('branding');
-              setDraft(null);
-              setSelectedSub(null);
-              setPendingReviewDecision(null);
-              setBrandingError(null);
-              setBrandingSuccess(null);
-            }}
-            className={`flex min-h-[44px] flex-1 items-center gap-2.5 rounded-xl px-3 text-sm font-semibold transition-colors ${
-              adminTab === 'branding'
-                ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
-                : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Palette className="h-4 w-4" />
-            <span>Branding &amp; App</span>
-          </button>
+        <div className="border-b border-slate-200/80 px-2 pb-3 dark:border-slate-800/80">
+          <p className="text-xs font-bold text-slate-900 dark:text-white">
+            {systemBranding.systemName}
+          </p>
+          <p className="font-mono-tabular mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+            /systemadministrator
+          </p>
+        </div>
+
+        <nav aria-label="Admin Studio navigation" className="mt-4 space-y-5">
+          {ADMIN_NAV_CLUSTERS.map((cluster) => (
+            <div key={cluster.id} className="space-y-1.5">
+              <p className="px-2 text-[11px] font-bold tracking-wider text-slate-400 uppercase dark:text-slate-500">
+                {cluster.label}
+              </p>
+              <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-1">
+                {cluster.items.map((item) => {
+                  const isActive = adminTab === item.id;
+                  const IconComponent =
+                    item.id === 'analytics'
+                      ? BarChart3
+                      : item.id === 'submissions'
+                      ? ClipboardList
+                      : item.id === 'courses'
+                      ? BookOpen
+                      : item.id === 'branding'
+                      ? Palette
+                      : Smartphone;
+
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      data-testid={`admin-nav-${item.id}`}
+                      onClick={() => handleSelectAdminTab(item.id)}
+                      className={`flex min-h-[44px] w-full items-center justify-between gap-2 rounded-xl px-3 text-left text-sm font-semibold transition-colors ${
+                        isActive
+                          ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
+                          : item.id === 'submissions' && pendingCount > 0
+                          ? 'border border-amber-300/80 bg-amber-50/75 text-amber-950 hover:bg-amber-100/80 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-900/50'
+                          : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <IconComponent className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                      </span>
+
+                      {item.id === 'courses' && (
+                        <span
+                          className={`font-mono-tabular shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                            isActive
+                              ? 'bg-white/15 text-white dark:bg-slate-950/20 dark:text-slate-950'
+                              : 'bg-slate-200/80 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                          }`}
+                        >
+                          {courses.length}
+                        </span>
+                      )}
+
+                      {item.id === 'submissions' && (
+                        <span
+                          className={`font-mono-tabular shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                            pendingCount > 0
+                              ? 'bg-amber-500 text-slate-950'
+                              : isActive
+                              ? 'bg-white/15 text-white dark:bg-slate-950/20 dark:text-slate-950'
+                              : 'bg-slate-200/80 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                          }`}
+                        >
+                          {pendingCount > 0 ? `${pendingCount} pending` : '0'}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
-        <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+        <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
           <button
             type="button"
             onClick={() => {
@@ -834,7 +848,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
               ) : (
                 <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
               )}
-              <div>
+              <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-bold">{adminNotice.title}</p>
                   {adminNotice.certificateCode && (
@@ -843,7 +857,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                     </span>
                   )}
                 </div>
-                <p className="mt-0.5 text-xs leading-relaxed opacity-90">{adminNotice.message}</p>
+                <p className="text-xs leading-relaxed opacity-90">{adminNotice.message}</p>
               </div>
             </div>
             <button
@@ -857,30 +871,25 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           </div>
         )}
 
-        {/* Prominent Pending Certificate Approval Banner */}
+        {/* Pending Certificate Approval Banner */}
         {pendingCount > 0 && !(adminTab === 'submissions' && selectedSub) && (
           <section
             aria-label="Pending certificate approvals"
-            className="flex flex-col justify-between gap-3 rounded-2xl border-2 border-amber-400/80 bg-amber-50/90 p-4 shadow-xs sm:flex-row sm:items-center dark:border-amber-600/70 dark:bg-amber-950/45"
+            className="grid gap-4 rounded-2xl border border-amber-300 bg-amber-50/90 p-5 shadow-xs md:grid-cols-[auto_1fr_auto] md:items-center dark:border-amber-700/70 dark:bg-amber-950/45"
           >
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-slate-950">
-                <Award className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/20 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-500/25 dark:text-amber-200">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-600 dark:bg-amber-400" />
-                    Action Required
-                  </span>
-                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {pendingCount} Pending Certificate{pendingCount === 1 ? '' : 's'} Awaiting Admin Approval
-                  </h2>
-                </div>
-                <p className="mt-0.5 text-xs text-slate-700 dark:text-amber-100/80">
-                  Review learner assessment attempts and approve or reject certificate issuance.
-                </p>
-              </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-slate-950">
+              <Award className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <p className="text-[11px] font-bold tracking-wider text-amber-900 uppercase dark:text-amber-300">
+                Action Required
+              </p>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                {pendingCount} Pending Certificate{pendingCount === 1 ? '' : 's'} Awaiting Admin Approval
+              </h2>
+              <p className="text-xs text-slate-700 dark:text-amber-100/80">
+                Review learner assessment attempts and approve or reject certificate issuance.
+              </p>
             </div>
             <button
               type="button"
@@ -890,7 +899,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 setSelectedSub(null);
                 setSubFilter('pending_review');
               }}
-              className="min-h-[40px] shrink-0 rounded-xl bg-amber-500 px-4 text-xs font-bold text-slate-950 hover:bg-amber-400"
+              className="min-h-[40px] shrink-0 whitespace-nowrap rounded-xl bg-amber-500 px-4 text-xs font-bold text-slate-950 hover:bg-amber-400"
             >
               Review Pending ({pendingCount})
             </button>
@@ -929,54 +938,76 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   setEditorError(null);
                   setEditorSuccess(null);
                 }}
-                className="flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+                className="flex min-h-[44px] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
               >
                 <Plus className="h-4 w-4" />
                 <span>New Course</span>
               </button>
             </div>
 
-            <div className={`divide-y divide-slate-200 overflow-hidden dark:divide-slate-800 ${cardCls}`}>
+            <div className="space-y-4">
               {courses.map((course) => {
                 const lessons = course.modules.filter((m) => m.kind === 'lesson').length;
                 const quizzes = course.modules.filter((m) => m.kind === 'quiz').length;
                 return (
-                  <div
+                  <article
                     key={course._id}
-                    className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"
+                    className={`grid gap-4 p-5 md:grid-cols-[136px_1fr_auto] md:items-center ${cardCls}`}
                   >
-                    <div className="flex items-center gap-4">
-                      <CourseBannerImage
-                        url={course.bannerUrl}
-                        title={course.title}
-                        className="h-16 w-24 shrink-0 rounded-xl border border-slate-200 dark:border-slate-700"
-                      />
-                      <div>
-                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                          <span
-                            className={`font-semibold ${
+                    <CourseBannerImage
+                      url={course.bannerUrl}
+                      title={course.title}
+                      className="aspect-video w-full rounded-xl border border-slate-200 md:h-24 md:w-[136px] dark:border-slate-700"
+                    />
+
+                    <div className="min-w-0 space-y-3">
+                      <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                        {course.title}
+                      </h2>
+                      <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50/90 p-3 text-xs sm:grid-cols-4 dark:bg-slate-950/60">
+                        <div>
+                          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                            Status
+                          </p>
+                          <p
+                            className={`mt-0.5 font-semibold ${
                               course.published
                                 ? 'text-emerald-700 dark:text-emerald-400'
                                 : 'text-amber-700 dark:text-amber-400'
                             }`}
                           >
                             {course.published ? 'Published' : 'Draft'}
-                          </span>
-                          <span aria-hidden="true">·</span>
-                          <span>{course.category}</span>
-                          <span aria-hidden="true">·</span>
-                          <span className="font-mono-tabular">
-                            {lessons} {lessons === 1 ? 'lesson' : 'lessons'} / {quizzes}{' '}
-                            {quizzes === 1 ? 'quiz' : 'quizzes'}
-                          </span>
+                          </p>
                         </div>
-                        <h2 className="mt-1 text-base font-bold text-slate-900 dark:text-white">
-                          {course.title}
-                        </h2>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                            Category
+                          </p>
+                          <p className="mt-0.5 truncate font-semibold text-slate-800 dark:text-slate-200">
+                            {course.category}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                            Curriculum
+                          </p>
+                          <p className="font-mono-tabular mt-0.5 font-semibold text-slate-800 dark:text-slate-200">
+                            {lessons} {lessons === 1 ? 'lesson' : 'lessons'}, {quizzes}{' '}
+                            {quizzes === 1 ? 'quiz' : 'quizzes'}
+                          </p>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                            Credential
+                          </p>
+                          <p className="mt-0.5 truncate font-medium text-slate-700 dark:text-slate-300">
+                            {course.certificateTitle || 'Standard'}
+                          </p>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 md:flex-col md:items-stretch">
                       <button
                         type="button"
                         onClick={() => {
@@ -993,44 +1024,47 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                           setEditorSuccess(null);
                           setConfirmDeleteCourseId(null);
                         }}
-                        className="min-h-[40px] rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
+                        className="min-h-[40px] flex-1 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-800 hover:bg-slate-50 md:flex-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
                       >
                         Edit Curriculum &amp; Certificate
                       </button>
                       {confirmDeleteCourseId === course._id ? (
-                        <div className="flex items-center gap-1.5 rounded-xl border border-red-300 bg-red-50 px-2.5 py-1 dark:border-red-800 dark:bg-red-950/60">
+                        <div className="flex items-center justify-between gap-1.5 rounded-xl border border-red-300 bg-red-50 px-2.5 py-1 dark:border-red-800 dark:bg-red-950/60">
                           <span className="text-xs font-semibold text-red-800 dark:text-red-200">
-                            Delete course?
+                            Delete?
                           </span>
-                          <button
-                            type="button"
-                            disabled={deletingCourseId === course._id}
-                            onClick={() => handleDeleteCourse(course)}
-                            className="min-h-[32px] rounded-lg bg-red-600 px-2.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-60"
-                          >
-                            {deletingCourseId === course._id ? 'Deleting...' : 'Confirm'}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={deletingCourseId === course._id}
-                            onClick={() => setConfirmDeleteCourseId(null)}
-                            className="min-h-[32px] rounded-lg px-2 text-xs font-semibold text-slate-700 hover:bg-white/70 dark:text-slate-200 dark:hover:bg-slate-800"
-                          >
-                            Cancel
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              disabled={deletingCourseId === course._id}
+                              onClick={() => handleDeleteCourse(course)}
+                              className="min-h-[32px] rounded-lg bg-red-600 px-2.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-60"
+                            >
+                              {deletingCourseId === course._id ? 'Deleting...' : 'Confirm'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deletingCourseId === course._id}
+                              onClick={() => setConfirmDeleteCourseId(null)}
+                              className="min-h-[32px] rounded-lg px-2 text-xs font-semibold text-slate-700 hover:bg-white/70 dark:text-slate-200 dark:hover:bg-slate-800"
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <button
                           type="button"
                           onClick={() => setConfirmDeleteCourseId(course._id)}
                           aria-label={`Delete ${course.title}`}
-                          className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-red-950/60 dark:hover:text-red-300"
+                          className="flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-500 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-red-950/60 dark:hover:text-red-300"
                         >
                           <Trash2 className="h-4 w-4" />
+                          <span>Delete</span>
                         </button>
                       )}
                     </div>
-                  </div>
+                  </article>
                 );
               })}
             </div>
@@ -1381,75 +1415,87 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             </div>
 
                             {blk.type === 'header' && (
-                              <div className="flex gap-2">
-                                <select
-                                  value={blk.level}
-                                  onChange={(e) =>
-                                    updateLessonBlock(modIdx, mod, blkIdx, {
-                                      ...blk,
-                                      level: Number(e.target.value) as 1 | 2 | 3,
-                                    })
-                                  }
-                                  className="rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                                >
-                                  <option value={1}>H1</option>
-                                  <option value={2}>H2</option>
-                                  <option value={3}>H3</option>
-                                </select>
-                                <input
-                                  type="text"
-                                  value={blk.text}
-                                  onChange={(e) =>
-                                    updateLessonBlock(modIdx, mod, blkIdx, {
-                                      ...blk,
-                                      text: e.target.value,
-                                    })
-                                  }
-                                  className="min-h-[38px] flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                                />
+                              <div className="grid gap-3 sm:grid-cols-[120px_1fr]">
+                                <div>
+                                  <label className="mb-1 block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                    Heading Level
+                                  </label>
+                                  <select
+                                    value={blk.level}
+                                    onChange={(e) =>
+                                      updateLessonBlock(modIdx, mod, blkIdx, {
+                                        ...blk,
+                                        level: Number(e.target.value) as 1 | 2 | 3,
+                                      })
+                                    }
+                                    className="min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                  >
+                                    <option value={1}>H1</option>
+                                    <option value={2}>H2</option>
+                                    <option value={3}>H3</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                    Heading Text
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={blk.text}
+                                    onChange={(e) =>
+                                      updateLessonBlock(modIdx, mod, blkIdx, {
+                                        ...blk,
+                                        text: e.target.value,
+                                      })
+                                    }
+                                    className="min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                  />
+                                </div>
                               </div>
                             )}
 
                             {blk.type === 'body' && (
-                              <div className="space-y-1.5">
-                                <div className="flex items-center gap-1.5 text-xs">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      updateLessonBlock(modIdx, mod, blkIdx, {
-                                        ...blk,
-                                        text: `${blk.text} **bold text**`,
-                                      })
-                                    }
-                                    className="rounded border border-slate-200 bg-white px-2 py-0.5 font-bold dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                                  >
-                                    B
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      updateLessonBlock(modIdx, mod, blkIdx, {
-                                        ...blk,
-                                        text: `${blk.text} *italic text*`,
-                                      })
-                                    }
-                                    className="rounded border border-slate-200 bg-white px-2 py-0.5 italic dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                                  >
-                                    I
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      updateLessonBlock(modIdx, mod, blkIdx, {
-                                        ...blk,
-                                        text: `${blk.text} __underlined__`,
-                                      })
-                                    }
-                                    className="rounded border border-slate-200 bg-white px-2 py-0.5 underline dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                                  >
-                                    U
-                                  </button>
-                                  <span className="text-slate-500 dark:text-slate-400">
+                              <div className="space-y-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateLessonBlock(modIdx, mod, blkIdx, {
+                                          ...blk,
+                                          text: `${blk.text} **bold text**`,
+                                        })
+                                      }
+                                      className="rounded border border-slate-200 bg-white px-2 py-0.5 font-bold dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                    >
+                                      B
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateLessonBlock(modIdx, mod, blkIdx, {
+                                          ...blk,
+                                          text: `${blk.text} *italic text*`,
+                                        })
+                                      }
+                                      className="rounded border border-slate-200 bg-white px-2 py-0.5 italic dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                    >
+                                      I
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateLessonBlock(modIdx, mod, blkIdx, {
+                                          ...blk,
+                                          text: `${blk.text} __underlined__`,
+                                        })
+                                      }
+                                      className="rounded border border-slate-200 bg-white px-2 py-0.5 underline dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                    >
+                                      U
+                                    </button>
+                                  </div>
+                                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
                                     Supports **bold**, *italic*, __underline__
                                   </span>
                                 </div>
@@ -1468,7 +1514,10 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             )}
 
                             {blk.type === 'bullets' && (
-                              <div className="space-y-2">
+                              <div className="space-y-1.5">
+                                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                  Bullet Items (one per line)
+                                </label>
                                 <textarea
                                   rows={3}
                                   value={blk.items.join('\n')}
@@ -1481,77 +1530,84 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                                   placeholder="One bullet point per line..."
                                   className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                 />
-                                <p className="text-xs text-slate-500 dark:text-slate-400">
-                                  One bullet item per line.
-                                </p>
                               </div>
                             )}
 
                             {(blk.type === 'image' || blk.type === 'video') && (
-                              <div className="space-y-2">
-                                <div className="flex flex-wrap gap-2">
-                                  <div className="flex items-center text-slate-500 dark:text-slate-400">
+                              <div className="grid gap-3">
+                                <div>
+                                  <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                                     {blk.type === 'video' ? (
-                                      <Film className="h-4 w-4" />
+                                      <Film className="h-3.5 w-3.5" />
                                     ) : (
-                                      <ImageIcon className="h-4 w-4" />
+                                      <ImageIcon className="h-3.5 w-3.5" />
                                     )}
+                                    <span>
+                                      {blk.type === 'video' ? 'Video Source URL or Upload' : 'Image Source URL or Upload'}
+                                    </span>
+                                  </label>
+                                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                                    <input
+                                      type="text"
+                                      value={blk.url}
+                                      onChange={(e) =>
+                                        updateLessonBlock(modIdx, mod, blkIdx, {
+                                          ...blk,
+                                          url: e.target.value,
+                                        })
+                                      }
+                                      placeholder={
+                                        blk.type === 'video'
+                                          ? '/media/safety-loto-brief.mp4 or upload'
+                                          : '/src/assets/images/... or upload'
+                                      }
+                                      className="min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                    />
+                                    <label className="flex min-h-[38px] cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+                                      <Upload className="h-3.5 w-3.5" />
+                                      <span>
+                                        {uploadingKey === blk.id ? 'Uploading...' : 'Upload File'}
+                                      </span>
+                                      <input
+                                        type="file"
+                                        accept={
+                                          blk.type === 'video'
+                                            ? 'video/mp4,video/webm'
+                                            : 'image/jpeg,image/png,image/webp'
+                                        }
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0];
+                                          if (file) {
+                                            handleFileUpload(file, blk.id, (url) =>
+                                              updateLessonBlock(modIdx, mod, blkIdx, {
+                                                ...blk,
+                                                url,
+                                              })
+                                            );
+                                          }
+                                        }}
+                                      />
+                                    </label>
                                   </div>
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                    Caption (optional)
+                                  </label>
                                   <input
                                     type="text"
-                                    value={blk.url}
+                                    value={blk.caption ?? ''}
                                     onChange={(e) =>
                                       updateLessonBlock(modIdx, mod, blkIdx, {
                                         ...blk,
-                                        url: e.target.value,
+                                        caption: e.target.value,
                                       })
                                     }
-                                    placeholder={
-                                      blk.type === 'video'
-                                        ? '/media/safety-loto-brief.mp4 or upload'
-                                        : '/src/assets/images/... or upload'
-                                    }
-                                    className="min-h-[38px] flex-1 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                    placeholder="Optional caption..."
+                                    className="min-h-[36px] w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                   />
-                                  <label className="flex min-h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
-                                    <Upload className="h-3.5 w-3.5" />
-                                    <span>
-                                      {uploadingKey === blk.id ? 'Uploading...' : 'Upload'}
-                                    </span>
-                                    <input
-                                      type="file"
-                                      accept={
-                                        blk.type === 'video'
-                                          ? 'video/mp4,video/webm'
-                                          : 'image/jpeg,image/png,image/webp'
-                                      }
-                                      className="hidden"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                          handleFileUpload(file, blk.id, (url) =>
-                                            updateLessonBlock(modIdx, mod, blkIdx, {
-                                              ...blk,
-                                              url,
-                                            })
-                                          );
-                                        }
-                                      }}
-                                    />
-                                  </label>
                                 </div>
-                                <input
-                                  type="text"
-                                  value={blk.caption ?? ''}
-                                  onChange={(e) =>
-                                    updateLessonBlock(modIdx, mod, blkIdx, {
-                                      ...blk,
-                                      caption: e.target.value,
-                                    })
-                                  }
-                                  placeholder="Optional caption..."
-                                  className="min-h-[36px] w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                                />
                               </div>
                             )}
                           </div>
@@ -1637,10 +1693,15 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             key={q.id}
                             className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60"
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                                Q{qIdx + 1} · {q.type.replace('_', ' ').toUpperCase()}
-                              </span>
+                            <div className="flex items-center justify-between gap-2 border-b border-slate-200/80 pb-2 dark:border-slate-800">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono-tabular text-xs font-bold text-slate-900 dark:text-white">
+                                  Q{qIdx + 1}
+                                </span>
+                                <span className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
+                                  {q.type.replace('_', ' ')}
+                                </span>
+                              </div>
                               <button
                                 type="button"
                                 onClick={() =>
@@ -1656,20 +1717,29 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                               </button>
                             </div>
 
-                            <input
-                              type="text"
-                              value={q.prompt}
-                              onChange={(e) => {
-                                const qs = [...mod.questions];
-                                qs[qIdx] = { ...q, prompt: e.target.value };
-                                updateModule(modIdx, { ...mod, questions: qs });
-                              }}
-                              placeholder="Question prompt..."
-                              className="min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                            />
+                            <div>
+                              <label className="mb-1 block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                Question Prompt
+                              </label>
+                              <input
+                                type="text"
+                                value={q.prompt}
+                                onChange={(e) => {
+                                  const qs = [...mod.questions];
+                                  qs[qIdx] = { ...q, prompt: e.target.value };
+                                  updateModule(modIdx, { ...mod, questions: qs });
+                                }}
+                                placeholder="Question prompt..."
+                                className="min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                              />
+                            </div>
 
                             {(q.type === 'multiple_choice' || q.type === 'select_all') && (
                               <div className="space-y-2">
+                                <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                  Answer Options (check correct{' '}
+                                  {q.type === 'multiple_choice' ? 'answer' : 'answers'})
+                                </p>
                                 {(q.options ?? []).map((opt, optIdx) => {
                                   const isChecked =
                                     q.type === 'multiple_choice'
@@ -1729,7 +1799,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             )}
 
                             {q.type === 'true_false' && (
-                              <div className="flex gap-4 text-xs font-medium text-slate-800 dark:text-slate-200">
+                              <div className="flex flex-wrap gap-4 text-xs font-medium text-slate-800 dark:text-slate-200">
                                 {[
                                   { idx: 0, label: 'True is correct' },
                                   { idx: 1, label: 'False is correct' },
@@ -1753,49 +1823,64 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             )}
 
                             {q.type === 'essay' && (
-                              <div className="grid gap-2 sm:grid-cols-2">
-                                <input
-                                  type="text"
-                                  value={(q.essayRubricKeywords ?? []).join(', ')}
-                                  onChange={(e) => {
-                                    const qs = [...mod.questions];
-                                    qs[qIdx] = {
-                                      ...q,
-                                      essayRubricKeywords: e.target.value
-                                        .split(',')
-                                        .map((s) => s.trim())
-                                        .filter(Boolean),
-                                    };
-                                    updateModule(modIdx, { ...mod, questions: qs });
-                                  }}
-                                  placeholder="Rubric keywords (comma-separated)"
-                                  className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                                />
-                                <input
-                                  type="text"
-                                  value={q.modelAnswer ?? ''}
-                                  onChange={(e) => {
-                                    const qs = [...mod.questions];
-                                    qs[qIdx] = { ...q, modelAnswer: e.target.value };
-                                    updateModule(modIdx, { ...mod, questions: qs });
-                                  }}
-                                  placeholder="Model answer shown to learner"
-                                  className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                                />
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <div>
+                                  <label className="mb-1 block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                    Rubric Keywords (comma-separated)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={(q.essayRubricKeywords ?? []).join(', ')}
+                                    onChange={(e) => {
+                                      const qs = [...mod.questions];
+                                      qs[qIdx] = {
+                                        ...q,
+                                        essayRubricKeywords: e.target.value
+                                          .split(',')
+                                          .map((s) => s.trim())
+                                          .filter(Boolean),
+                                      };
+                                      updateModule(modIdx, { ...mod, questions: qs });
+                                    }}
+                                    placeholder="safety, verify"
+                                    className="min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                    Model Answer
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={q.modelAnswer ?? ''}
+                                    onChange={(e) => {
+                                      const qs = [...mod.questions];
+                                      qs[qIdx] = { ...q, modelAnswer: e.target.value };
+                                      updateModule(modIdx, { ...mod, questions: qs });
+                                    }}
+                                    placeholder="Model answer shown to learner"
+                                    className="min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                  />
+                                </div>
                               </div>
                             )}
 
-                            <input
-                              type="text"
-                              value={q.explanation}
-                              onChange={(e) => {
-                                const qs = [...mod.questions];
-                                qs[qIdx] = { ...q, explanation: e.target.value };
-                                updateModule(modIdx, { ...mod, questions: qs });
-                              }}
-                              placeholder="Explanation shown if answered wrong..."
-                              className="min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                            />
+                            <div>
+                              <label className="mb-1 block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                Diagnostic Explanation
+                              </label>
+                              <input
+                                type="text"
+                                value={q.explanation}
+                                onChange={(e) => {
+                                  const qs = [...mod.questions];
+                                  qs[qIdx] = { ...q, explanation: e.target.value };
+                                  updateModule(modIdx, { ...mod, questions: qs });
+                                }}
+                                placeholder="Explanation shown if answered wrong..."
+                                className="min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                              />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1826,19 +1911,18 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   )}
 
                   {/* Quick Insert Module After This Row */}
-                  <div className="flex justify-end gap-2 pt-2 text-xs">
+                  <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-3 text-xs dark:border-slate-800">
                     <button
                       type="button"
                       onClick={() => addModule('lesson', modIdx)}
-                      className="text-slate-500 hover:text-blue-700 dark:text-slate-400 dark:hover:text-sky-400"
+                      className="font-medium text-slate-600 hover:text-blue-700 dark:text-slate-400 dark:hover:text-sky-400"
                     >
                       + Insert Lesson Below
                     </button>
-                    <span className="text-slate-300 dark:text-slate-700">|</span>
                     <button
                       type="button"
                       onClick={() => addModule('quiz', modIdx)}
-                      className="text-slate-500 hover:text-blue-700 dark:text-slate-400 dark:hover:text-sky-400"
+                      className="font-medium text-slate-600 hover:text-blue-700 dark:text-slate-400 dark:hover:text-sky-400"
                     >
                       + Insert Quiz Below
                     </button>
@@ -1882,9 +1966,6 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                           : 'text-slate-600 dark:text-slate-300'
                       }`}
                     >
-                      {isPendingTab && (
-                        <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-                      )}
                       <span>{f.label}</span>
                       <span
                         className={`font-mono-tabular rounded px-1.5 py-0.5 text-[10px] font-bold ${
@@ -1906,55 +1987,78 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 No learner submissions in this status yet.
               </div>
             ) : (
-              <div className={`divide-y divide-slate-200 overflow-hidden dark:divide-slate-800 ${cardCls}`}>
+              <div className="space-y-4">
                 {filteredSubs.map((sub) => {
                   const isPending = sub.status === 'pending_review';
                   const isApproved = sub.status === 'approved';
                   return (
-                    <div
+                    <article
                       key={sub._id}
-                      className={`flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center ${
+                      className={`grid gap-4 p-5 lg:grid-cols-[1fr_auto] lg:items-center ${cardCls} ${
                         isPending
-                          ? 'border-l-4 border-l-amber-500 bg-amber-50/40 dark:bg-amber-950/15'
-                          : isApproved
-                          ? 'border-l-4 border-l-emerald-500'
-                          : 'border-l-4 border-l-red-500'
+                          ? 'border-amber-300/90 bg-amber-50/45 dark:border-amber-700/60 dark:bg-amber-950/20'
+                          : ''
                       }`}
                     >
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <div className="min-w-0 space-y-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                              {sub.userName}
+                            </h2>
+                            <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                              {sub.userEmail}
+                            </p>
+                          </div>
+
                           {isPending ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100/90 px-2.5 py-0.5 font-bold text-amber-900 dark:border-amber-700/70 dark:bg-amber-950/80 dark:text-amber-200">
+                            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100/90 px-2.5 py-1 text-xs font-bold text-amber-900 dark:border-amber-700/70 dark:bg-amber-950/80 dark:text-amber-200">
                               <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                              Pending Certificate Approval
+                              Pending Approval
                             </span>
                           ) : isApproved ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
                               <CheckCircle2 className="h-3.5 w-3.5" />
-                              Approved · Certificate Issued
+                              Approved
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2.5 py-0.5 font-bold text-red-800 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300">
+                            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-bold text-red-800 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300">
                               <XCircle className="h-3.5 w-3.5" />
                               Rejected
                             </span>
                           )}
-                          <span className="font-mono-tabular rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-900 dark:bg-slate-800 dark:text-white">
-                            Score: {sub.overallScore}%
-                          </span>
-                          <span className="text-slate-500 dark:text-slate-400">
-                            {new Date(sub.submittedAt).toLocaleString()}
-                          </span>
                         </div>
-                        <h2 className="mt-1.5 text-base font-bold text-slate-900 dark:text-white">
-                          {sub.userName}{' '}
-                          <span className="font-normal text-slate-500 dark:text-slate-400">
-                            ({sub.userEmail})
-                          </span>
-                        </h2>
-                        <p className="text-xs text-slate-600 dark:text-slate-300">
-                          {sub.courseTitle} · <span className="font-medium">{sub.certificateTitle}</span>
-                        </p>
+
+                        <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50/90 p-3 text-xs sm:grid-cols-4 dark:bg-slate-950/60">
+                          <div className="min-w-0">
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">Course</p>
+                            <p className="mt-0.5 truncate font-semibold text-slate-800 dark:text-slate-200">
+                              {sub.courseTitle}
+                            </p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                              Target Certificate
+                            </p>
+                            <p className="mt-0.5 truncate font-medium text-slate-700 dark:text-slate-300">
+                              {sub.certificateTitle}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">Score</p>
+                            <p className="font-mono-tabular mt-0.5 font-bold text-slate-900 dark:text-white">
+                              {sub.overallScore}%
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                              Submitted
+                            </p>
+                            <p className="font-mono-tabular mt-0.5 text-slate-700 dark:text-slate-300">
+                              {new Date(sub.submittedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
                       </div>
 
                       <button
@@ -1965,7 +2069,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                           setPendingReviewDecision(null);
                           setReviewResultBanner(null);
                         }}
-                        className={`min-h-[42px] shrink-0 rounded-xl px-4 text-xs font-bold transition-colors ${
+                        className={`min-h-[42px] shrink-0 whitespace-nowrap rounded-xl px-4 text-xs font-bold transition-colors ${
                           isPending
                             ? 'bg-amber-500 text-slate-950 hover:bg-amber-400'
                             : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
@@ -1973,7 +2077,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       >
                         {isPending ? 'Review & Issue Certificate' : 'Inspect Review Details'}
                       </button>
-                    </div>
+                    </article>
                   );
                 })}
               </div>
@@ -2034,30 +2138,43 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 )}
               </div>
 
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4 dark:border-slate-800">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                    {selectedSub.courseTitle}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                    Learner:{' '}
-                    <span className="font-semibold text-slate-900 dark:text-white">
+              <div className="space-y-4 border-b border-slate-200 pb-5 dark:border-slate-800">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                  {selectedSub.courseTitle}
+                </h2>
+                <div className="grid gap-3 rounded-xl bg-slate-50/90 p-4 text-xs sm:grid-cols-2 lg:grid-cols-4 dark:bg-slate-950/60">
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Learner</p>
+                    <p className="mt-0.5 font-bold text-slate-900 dark:text-white">
                       {selectedSub.userName}
-                    </span>{' '}
-                    ({selectedSub.userEmail})
-                  </p>
-                  {selectedSub.completedOfflineAt && (
-                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                      Completed offline on {new Date(selectedSub.completedOfflineAt).toLocaleString()}
                     </p>
-                  )}
-                </div>
-                <div className="text-right">
-                  <div className="font-mono-tabular text-2xl font-bold text-slate-900 dark:text-white">
-                    {selectedSub.overallScore}%
+                    <p className="truncate text-slate-500 dark:text-slate-400">
+                      {selectedSub.userEmail}
+                    </p>
                   </div>
-                  <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    Certificate: {selectedSub.certificateTitle}
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Certificate Track
+                    </p>
+                    <p className="mt-0.5 font-semibold text-slate-800 dark:text-slate-200">
+                      {selectedSub.certificateTitle}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Final Score</p>
+                    <p className="font-mono-tabular mt-0.5 text-xl font-bold text-slate-900 dark:text-white">
+                      {selectedSub.overallScore}%
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {selectedSub.completedOfflineAt ? 'Completed Offline' : 'Submitted'}
+                    </p>
+                    <p className="font-mono-tabular mt-0.5 font-medium text-slate-800 dark:text-slate-200">
+                      {new Date(
+                        selectedSub.completedOfflineAt || selectedSub.submittedAt
+                      ).toLocaleString()}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -2154,7 +2271,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
 
                 {pendingReviewDecision ? (
                   <div
-                    className={`flex flex-col justify-between gap-3 rounded-xl border p-4 sm:flex-row sm:items-center ${
+                    className={`grid gap-4 rounded-xl border p-4 sm:grid-cols-[1fr_auto] sm:items-center ${
                       pendingReviewDecision === 'approved'
                         ? 'border-emerald-300 bg-emerald-50/90 dark:border-emerald-800 dark:bg-emerald-950/50'
                         : 'border-red-300 bg-red-50/90 dark:border-red-800 dark:bg-red-950/50'
@@ -2226,22 +2343,22 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           </div>
         )}
 
-        {/* SYSTEM BRANDING & ANDROID APP DISTRIBUTION */}
+        {/* SYSTEM SETTINGS: BRANDING & IDENTITY */}
         {adminTab === 'branding' && (
           <form onSubmit={handleSaveBranding} className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <div>
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-                  Branding &amp; Android App Distribution
+                  Branding &amp; Platform Identity
                 </h1>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                  Configure the platform title, icon, and whether the public Download App buttons serve a direct .apk download or a Google Play Store link. Saving syncs the Android project&apos;s app name, launcher icon, and connected mobile clients.
+                  Configure the platform title, accent color, tagline, and launcher icon. Saving updates both the public site and connected Android clients.
                 </p>
               </div>
               <button
                 type="submit"
                 disabled={savingBranding || uploadingApk}
-                className="flex min-h-[44px] items-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+                className="flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
               >
                 <Save className="h-4 w-4" />
                 <span>{savingBranding ? 'Saving...' : 'Save Settings'}</span>
@@ -2282,7 +2399,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   <label htmlFor="system-accent-input" className={labelCls}>
                     Primary Accent Color
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="grid grid-cols-[56px_1fr] gap-2">
                     <input
                       id="system-accent-input"
                       type="color"
@@ -2298,7 +2415,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       onChange={(e) =>
                         setBrandingDraft({ ...brandingDraft, accentColor: e.target.value })
                       }
-                      className={`font-mono-tabular flex-1 ${inputCls}`}
+                      className={`font-mono-tabular ${inputCls}`}
                     />
                   </div>
                 </div>
@@ -2319,8 +2436,8 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 />
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-[96px_1fr] sm:items-center">
-                <div className="flex h-24 w-24 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
+              <div className="grid gap-4 rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 sm:grid-cols-[96px_1fr] sm:items-start dark:border-slate-800 dark:bg-slate-950/50">
+                <div className="flex h-24 w-24 items-center justify-center rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                   {brandingDraft.iconUrl ? (
                     <img
                       src={brandingDraft.iconUrl}
@@ -2331,11 +2448,11 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                     <span className="text-xs text-slate-400">No Icon</span>
                   )}
                 </div>
-                <div className="space-y-2.5">
-                  <label htmlFor="system-icon-url-input" className={labelCls}>
-                    System Icon (sets Android Launcher Icon &amp; Runtime Badge)
-                  </label>
-                  <div className="flex flex-wrap gap-2">
+                <div className="space-y-3">
+                  <div>
+                    <label htmlFor="system-icon-url-input" className={labelCls}>
+                      System Icon (sets Android Launcher Icon &amp; Runtime Badge)
+                    </label>
                     <input
                       id="system-icon-url-input"
                       type="text"
@@ -2344,9 +2461,11 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                         setBrandingDraft({ ...brandingDraft, iconUrl: e.target.value })
                       }
                       placeholder="/icon.svg"
-                      className="min-h-[40px] flex-1 rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                      className="min-h-[40px] w-full rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                     />
-                    <label className="flex min-h-[40px] cursor-pointer items-center gap-1.5 rounded-xl border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <label className="flex min-h-[38px] cursor-pointer items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
                       <Upload className="h-3.5 w-3.5" />
                       <span>{uploadingKey === 'system-icon' ? 'Uploading...' : 'Upload Icon'}</span>
                       <input
@@ -2368,47 +2487,81 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       onClick={() =>
                         setBrandingDraft((prev) => ({ ...prev, iconUrl: '/icon.svg' }))
                       }
-                      className="min-h-[40px] rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                      className="min-h-[38px] rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                     >
-                      Default Icon
+                      Use Default Icon
                     </button>
                   </div>
                 </div>
               </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/60">
-                <div>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white">
-                    Branded Android Build Source
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
-                    Downloads the Android Studio project with your saved System Name and launcher mipmap icons pre-applied.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  disabled={downloadingSourceZip}
-                  onClick={handleDownloadBrandedAndroidZip}
-                  className="flex min-h-[40px] shrink-0 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3.5 text-xs font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>
-                    {downloadingSourceZip
-                      ? 'Preparing .zip...'
-                      : 'Download Branded Android Project (.zip)'}
-                  </span>
-                </button>
-              </div>
             </section>
 
-            {/* Android App Distribution Mode & APK Upload */}
+            <section className={`grid gap-4 p-6 sm:grid-cols-[1fr_auto] sm:items-center ${cardCls}`}>
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                  Branded Android Build Source
+                </h2>
+                <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                  Downloads the Android Studio project with your saved System Name and launcher mipmap icons pre-applied.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={downloadingSourceZip}
+                onClick={handleDownloadBrandedAndroidZip}
+                className="flex min-h-[42px] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>
+                  {downloadingSourceZip
+                    ? 'Preparing .zip...'
+                    : 'Download Android Studio Project (.zip)'}
+                </span>
+              </button>
+            </section>
+          </form>
+        )}
+
+        {/* SYSTEM SETTINGS: APP DISTRIBUTION */}
+        {adminTab === 'distribution' && (
+          <form onSubmit={handleSaveBranding} className="space-y-6">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+                  Android App Distribution
+                </h1>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                  Choose whether the public Download App buttons serve a direct .apk release or link to your Google Play Store listing.
+                </p>
+              </div>
+              <button
+                type="submit"
+                disabled={savingBranding || uploadingApk}
+                className="flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+              >
+                <Save className="h-4 w-4" />
+                <span>{savingBranding ? 'Saving...' : 'Save Settings'}</span>
+              </button>
+            </div>
+
+            {brandingError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300">
+                {brandingError}
+              </div>
+            )}
+            {brandingSuccess && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-300">
+                {brandingSuccess}
+              </div>
+            )}
+
             <section className={`space-y-5 p-6 ${cardCls}`}>
               <div>
                 <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                  Android &ldquo;Download App&rdquo; Button Behavior
+                  Public &ldquo;Download App&rdquo; Behavior
                 </h2>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-                  Choose whether the public landing page Download App button downloads the uploaded .apk file directly or opens your Google Play Store listing.
+                  Select the active distribution channel shown on the landing page.
                 </p>
               </div>
 
@@ -2471,22 +2624,22 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
 
               {(brandingDraft.appDistributionMode ?? 'apk_download') === 'apk_download' ? (
                 <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/60">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <Smartphone className="h-4 w-4 text-blue-700 dark:text-sky-400" />
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                    <div className="flex items-start gap-2.5">
+                      <Smartphone className="mt-0.5 h-4 w-4 shrink-0 text-blue-700 dark:text-sky-400" />
                       <div>
                         <p className="text-sm font-bold text-slate-900 dark:text-white">
                           Upload Android Release (.apk)
                         </p>
-                        <p className="text-xs text-slate-600 dark:text-slate-300">
-                          Build <code className="font-mono-tabular">app-debug.apk</code> via the included{' '}
+                        <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
+                          Build <code className="font-mono-tabular">app-debug.apk</code> via{' '}
                           <code className="font-mono-tabular">.github/workflows/android-build.yml</code>{' '}
-                          workflow on GitHub Actions, then upload it here.
+                          and upload it here.
                         </p>
                       </div>
                     </div>
 
-                    <label className="flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400">
+                    <label className="flex min-h-[42px] cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400">
                       <Upload className="h-3.5 w-3.5" />
                       <span>{uploadingApk ? 'Uploading APK...' : 'Upload .apk File'}</span>
                       <input
@@ -2507,15 +2660,30 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   </div>
 
                   {brandingDraft.apkUrl ? (
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-white px-4 py-3 text-xs dark:border-emerald-900/60 dark:bg-slate-900">
-                      <div className="min-w-0">
-                        <p className="font-bold text-slate-900 dark:text-white">
-                          Active APK: {brandingDraft.apkFileName || 'app-debug.apk'}
-                          {apkSizeBytes ? ` · ${Math.max(1, Math.round(apkSizeBytes / 1024))} KB` : ''}
-                        </p>
-                        <p className="font-mono-tabular mt-0.5 truncate text-slate-500 dark:text-slate-400">
-                          {brandingDraft.apkUrl}
-                        </p>
+                    <div className="grid gap-3 rounded-xl border border-emerald-200 bg-white p-4 text-xs sm:grid-cols-[1fr_auto] sm:items-center dark:border-emerald-900/60 dark:bg-slate-900">
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <div className="min-w-0">
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Active Package
+                          </p>
+                          <p className="mt-0.5 truncate font-bold text-slate-900 dark:text-white">
+                            {brandingDraft.apkFileName || 'app-debug.apk'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">Size</p>
+                          <p className="font-mono-tabular mt-0.5 font-semibold text-slate-800 dark:text-slate-200">
+                            {apkSizeBytes
+                              ? `${Math.max(1, Math.round(apkSizeBytes / 1024))} KB`
+                              : 'Ready'}
+                          </p>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">Path</p>
+                          <p className="font-mono-tabular mt-0.5 truncate text-slate-600 dark:text-slate-300">
+                            {brandingDraft.apkUrl}
+                          </p>
+                        </div>
                       </div>
                       <button
                         type="button"
@@ -2527,7 +2695,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                             apkFileName: '',
                           }));
                         }}
-                        className="min-h-[34px] rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-900/50"
+                        className="min-h-[36px] shrink-0 whitespace-nowrap rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-900/50"
                       >
                         Remove APK
                       </button>

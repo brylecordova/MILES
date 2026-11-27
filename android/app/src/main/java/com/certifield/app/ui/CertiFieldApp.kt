@@ -358,7 +358,7 @@ fun CertiFieldApp() {
 
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
                                     Surface(
                                         onClick = {
@@ -368,34 +368,15 @@ fun CertiFieldApp() {
                                         shape = RoundedCornerShape(10.dp),
                                         color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC),
                                         border = BorderStroke(1.dp, borderColor),
-                                        modifier = Modifier.size(34.dp),
+                                        modifier = Modifier.size(40.dp),
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Icon(
                                                 imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
                                                 contentDescription = if (isDarkMode) "Switch to Light Mode" else "Switch to Dark Mode",
                                                 tint = if (isDarkMode) Color(0xFFFBBF24) else textPrimary,
-                                                modifier = Modifier.size(17.dp),
+                                                modifier = Modifier.size(18.dp),
                                             )
-                                        }
-                                    }
-
-                                    if (!isConnected) {
-                                        Surface(
-                                            onClick = { showConnectionDialog = true },
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = if (isDarkMode) Color(0xFF1E293B).copy(alpha = 0.85f) else Color(0xFFF8FAFC),
-                                            border = BorderStroke(1.dp, borderColor),
-                                            modifier = Modifier.size(34.dp),
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    imageVector = Icons.Default.WifiOff,
-                                                    contentDescription = "No internet connection",
-                                                    tint = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706),
-                                                    modifier = Modifier.size(17.dp),
-                                                )
-                                            }
                                         }
                                     }
 
@@ -405,28 +386,29 @@ fun CertiFieldApp() {
                                         color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF8FAFC),
                                         border = BorderStroke(
                                             1.dp,
-                                            if (isConnected) Color(0xFF10B981).copy(alpha = 0.65f) else borderColor,
+                                            if (isConnected) Color(0xFF10B981).copy(alpha = 0.65f) else Color(0xFFD97706).copy(alpha = 0.55f),
                                         ),
-                                        modifier = Modifier.height(34.dp),
+                                        modifier = Modifier.height(40.dp),
                                     ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(horizontal = 7.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                            modifier = Modifier.padding(horizontal = 9.dp),
                                         ) {
-                                            if (isConnected) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(7.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color(0xFF10B981))
-                                                )
-                                                Spacer(Modifier.width(5.dp))
-                                            }
+                                            Icon(
+                                                imageVector = if (isConnected) Icons.Default.Wifi else Icons.Default.WifiOff,
+                                                contentDescription = if (isConnected) "Online" else "Offline",
+                                                tint = if (isConnected) {
+                                                    if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669)
+                                                } else {
+                                                    if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706)
+                                                },
+                                                modifier = Modifier.size(15.dp),
+                                            )
                                             Text(
-                                                "CONNECTION",
-                                                fontSize = 9.5.sp,
-                                                fontFamily = FontFamily.Monospace,
-                                                fontWeight = FontWeight.Bold,
+                                                text = if (isConnected) "Online" else "Offline",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
                                                 maxLines = 1,
                                                 softWrap = false,
                                                 color = textPrimary,
@@ -439,15 +421,15 @@ fun CertiFieldApp() {
                                         shape = RoundedCornerShape(10.dp),
                                         color = brandAccent.copy(alpha = if (isDarkMode) 0.16f else 0.10f),
                                         border = BorderStroke(1.dp, brandAccent.copy(alpha = 0.45f)),
-                                        modifier = Modifier.height(34.dp),
+                                        modifier = Modifier.height(40.dp),
                                     ) {
                                         Box(
                                             contentAlignment = Alignment.Center,
-                                            modifier = Modifier.padding(horizontal = 8.dp),
+                                            modifier = Modifier.padding(horizontal = 10.dp),
                                         ) {
                                             Text(
                                                 text = user?.name?.split(" ")?.firstOrNull() ?: "Sign In",
-                                                fontSize = 11.sp,
+                                                fontSize = 11.5.sp,
                                                 maxLines = 1,
                                                 softWrap = false,
                                                 overflow = TextOverflow.Ellipsis,
@@ -1412,14 +1394,29 @@ private fun AvailableCoursesTab(
                             )
                         }
                         Column(Modifier.padding(16.dp)) {
-                            Text(
-                                "${course.category.uppercase()} · ${course.modules.count { it.kind == "lesson" }} LESSONS · ${course.modules.count { it.kind == "quiz" }} QUIZZES",
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                color = brandAccent,
-                            )
-                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    course.category.uppercase(),
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = brandAccent,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                )
+                                Text(
+                                    "${course.modules.count { it.kind == "lesson" }} Lessons · ${course.modules.count { it.kind == "quiz" }} Quizzes",
+                                    fontSize = 11.sp,
+                                    color = textSecondary,
+                                    maxLines = 1,
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
                             Text(
                                 course.title,
                                 style = MaterialTheme.typography.titleMedium,
@@ -1715,20 +1712,40 @@ private fun DownloadedCoursesTab(
                                 )
                             }
                             Column(Modifier.padding(16.dp)) {
-                                Text(
-                                    when (status) {
-                                        "completed" -> "${pkg.course.category.uppercase()} · COMPLETED · READY TO REVIEW"
-                                        "in_progress" -> "${pkg.course.category.uppercase()} · IN PROGRESS · $done / $total MODULES"
-                                        else -> "${pkg.course.category.uppercase()} · NOT STARTED"
-                                    },
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = if (status == "completed") {
-                                        if (isDarkMode) Color(0xFF34D399) else Color(0xFF15803D)
-                                    } else brandAccent,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                                Spacer(Modifier.height(4.dp))
+                                val statusText = when (status) {
+                                    "completed" -> "COMPLETED"
+                                    "in_progress" -> "IN PROGRESS"
+                                    else -> "NOT STARTED"
+                                }
+                                val statusColor = if (status == "completed") {
+                                    if (isDarkMode) Color(0xFF34D399) else Color(0xFF15803D)
+                                } else brandAccent
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        pkg.course.category.uppercase(),
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = brandAccent,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                    )
+                                    Text(
+                                        statusText,
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = statusColor,
+                                        maxLines = 1,
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
                                 Text(
                                     pkg.course.title,
                                     style = MaterialTheme.typography.titleMedium,
@@ -1742,40 +1759,76 @@ private fun DownloadedCoursesTab(
                                     textSecondary = textSecondary,
                                 )
                                 Spacer(Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        "Progress",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = textSecondary,
+                                    )
+                                    Text(
+                                        "$done / $total modules",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = textPrimary,
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
                                 LinearProgressIndicator(
                                     progress = { done.toFloat() / total.toFloat() },
                                     color = brandAccent,
                                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)),
                                 )
                                 Spacer(Modifier.height(14.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        onClick = { onOpen(pkg) },
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.weight(1f).height(46.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
-                                    ) {
-                                        Text(if (status == "not_started") "Start Course" else "Resume", maxLines = 1)
-                                    }
+                                Button(
+                                    onClick = { onOpen(pkg) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
+                                ) {
+                                    Text(if (status == "not_started") "Start Course" else "Resume Course", maxLines = 1)
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
                                     OutlinedButton(
                                         onClick = { onRateCourse(pkg.course) },
                                         shape = RoundedCornerShape(12.dp),
                                         border = BorderStroke(1.dp, borderColor),
-                                        modifier = Modifier.height(46.dp),
+                                        modifier = Modifier.weight(1f).height(44.dp),
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Star,
-                                            contentDescription = "Rate",
+                                            contentDescription = null,
                                             tint = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706),
-                                            modifier = Modifier.size(17.dp),
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            text = pkg.course.userRating?.let { "${it}★" } ?: "Rate",
+                                            maxLines = 1,
+                                            color = textPrimary,
                                         )
                                     }
                                     OutlinedButton(
                                         onClick = { onRemove(pkg.courseId) },
                                         shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.height(46.dp),
+                                        border = BorderStroke(1.dp, borderColor),
+                                        modifier = Modifier.weight(1f).height(44.dp),
                                     ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Remove")
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = null,
+                                            tint = textSecondary,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Remove", maxLines = 1, color = textPrimary)
                                     }
                                 }
                             }
@@ -1853,11 +1906,23 @@ private fun FinishedCoursesTab(
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Text(item.courseTitle, fontWeight = FontWeight.Bold, color = textPrimary)
-                        Text(
-                            "Score: ${item.overallScore}% · Saved offline",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = textSecondary,
-                        )
+                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "Score: ${item.overallScore}%",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = textPrimary,
+                            )
+                            Text(
+                                "Saved offline",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = textSecondary,
+                            )
+                        }
                         Spacer(Modifier.height(10.dp))
                         Button(
                             onClick = { onSubmitPending(item) },
@@ -1923,14 +1988,27 @@ private fun FinishedCoursesTab(
                     shape = RoundedCornerShape(16.dp),
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        Text(
-                            "$label · SCORE ${sub.overallScore}%",
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = statusColor,
-                        )
-                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                label,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = statusColor,
+                            )
+                            Text(
+                                "Score ${sub.overallScore}%",
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = textPrimary,
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
                         Text(sub.courseTitle, fontWeight = FontWeight.Bold, color = textPrimary)
                         sub.adminFeedback?.let {
                             Spacer(Modifier.height(4.dp))
@@ -1999,21 +2077,59 @@ private fun CertificatesTab(
                     shape = RoundedCornerShape(18.dp),
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        Text(
-                            "${cert.issuerName.uppercase()} · ${cert.certificateCode}",
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = brandAccent,
-                        )
-                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                cert.issuerName.uppercase(),
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = brandAccent,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f).padding(end = 8.dp),
+                            )
+                            Text(
+                                cert.certificateCode,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = textSecondary,
+                                maxLines = 1,
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
                         Text(
                             cert.certificateTitle,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = textPrimary,
                         )
-                        Text("${cert.courseTitle} · Score ${cert.score}%", style = MaterialTheme.typography.bodySmall, color = textSecondary)
+                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                cert.courseTitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f).padding(end = 8.dp),
+                            )
+                            Text(
+                                "Score ${cert.score}%",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.SemiBold,
+                                color = textPrimary,
+                            )
+                        }
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
@@ -2288,8 +2404,26 @@ private fun CoursePlayerScreen(
                     ) {
                         Column(Modifier.padding(14.dp)) {
                             Text(rec.questionPrompt, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                            Text("Your answer: ${rec.userAnswerLabel} · Tries: ${rec.tries}", style = MaterialTheme.typography.bodySmall, color = textSecondary)
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    "Your answer: ${rec.userAnswerLabel}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = textSecondary,
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                )
+                                Text(
+                                    "Tries: ${rec.tries}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = textSecondary,
+                                )
+                            }
                             if (!rec.isCorrect) {
+                                Spacer(Modifier.height(4.dp))
                                 Text("Correct answer: ${rec.correctAnswerLabel}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = textPrimary)
                                 Text("Explanation: ${rec.explanation}", style = MaterialTheme.typography.bodySmall, color = textSecondary)
                             }

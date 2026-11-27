@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MotionConfig, motion, useScroll, useTransform } from 'motion/react';
 import {
   Award,
+  BookOpen,
   CheckCircle2,
   Download,
   ExternalLink,
@@ -9,6 +10,8 @@ import {
   Layers,
   Moon,
   Search,
+  ShieldCheck,
+  Smartphone,
   Star,
   Sun,
   X,
@@ -266,10 +269,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="min-h-screen text-slate-900 dark:text-slate-100">
+      <div className="min-h-screen pb-16 text-slate-900 md:pb-0 dark:text-slate-100">
         {/* Top Navigation Bar */}
         <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/80 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/80">
-          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-6 px-4 sm:px-6">
+          <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:h-16 sm:gap-6 sm:px-6">
             {/* Zone 1: Dynamic System Icon + Name */}
             <a
               href="#top"
@@ -407,19 +410,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: 0.36, ease: EASE_EXPO }}
-                  className="mt-7 flex flex-wrap items-center gap-x-2.5 gap-y-2 text-xs font-medium text-slate-500 dark:text-slate-400"
+                  className="mt-7 grid gap-2.5 sm:grid-cols-3"
                 >
-                  <span>Offline MP4 video playback</span>
-                  <span aria-hidden="true">·</span>
-                  <span>Offline saved credentials</span>
-                  <span aria-hidden="true">·</span>
-                  <span>
-                    {isPlayStoreActive
-                      ? 'Available via Google Play'
-                      : hasDirectApk
-                      ? `Direct .apk v${branding.apkVersion || '1.0.0'}`
-                      : 'Android APK distribution'}
-                  </span>
+                  {[
+                    { label: 'Playback', value: 'Offline MP4 Video' },
+                    { label: 'Credentials', value: 'A4 PDF Export' },
+                    {
+                      label: 'Distribution',
+                      value: isPlayStoreActive
+                        ? 'Google Play Store'
+                        : hasDirectApk
+                        ? `APK v${branding.apkVersion || '1.0.0'}`
+                        : 'Android App',
+                    },
+                  ].map((spec) => (
+                    <div
+                      key={spec.label}
+                      className="rounded-xl border border-slate-200/80 bg-white/70 px-3 py-2 backdrop-blur-xs dark:border-slate-800/80 dark:bg-slate-900/60"
+                    >
+                      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                        {spec.label}
+                      </p>
+                      <p className="mt-0.5 text-xs font-semibold text-slate-800 dark:text-slate-200">
+                        {spec.value}
+                      </p>
+                    </div>
+                  ))}
                 </motion.div>
               </div>
 
@@ -721,7 +737,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                         className="aspect-video w-full border-b border-slate-100 dark:border-slate-800"
                       />
                       <div className="flex flex-1 flex-col p-5">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-start justify-between gap-2">
                           <span
                             className="text-xs font-semibold leading-snug"
                             style={{ color: isDark ? '#38bdf8' : accent }}
@@ -743,31 +759,40 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                           {course.description}
                         </p>
 
-                        {/* Dedicated Specs & Rating Row */}
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-xs text-slate-500 dark:text-slate-400">
-                          <span className="font-mono-tabular font-medium">
-                            {lessonCount} {lessonCount === 1 ? 'lesson' : 'lessons'} · {quizCount}{' '}
-                            {quizCount === 1 ? 'quiz' : 'quizzes'}
-                          </span>
-                          <span className="inline-flex items-center gap-1 font-mono-tabular">
-                            <Star
-                              className={`h-3.5 w-3.5 ${
-                                ratingCount > 0
-                                  ? 'fill-amber-400 text-amber-400'
-                                  : 'text-slate-300 dark:text-slate-600'
-                              }`}
-                            />
-                            {ratingCount > 0 ? (
-                              <>
-                                <span className="font-semibold text-slate-700 dark:text-slate-200">
-                                  {averageRating.toFixed(1)}
+                        {/* Structured 2-Column Spec & Rating Grid */}
+                        <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl border border-slate-100 bg-slate-50/80 p-3 text-xs dark:border-slate-800/80 dark:bg-slate-950/55">
+                          <div>
+                            <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                              Curriculum
+                            </p>
+                            <p className="font-mono-tabular mt-0.5 font-semibold text-slate-800 dark:text-slate-200">
+                              {lessonCount} {lessonCount === 1 ? 'lesson' : 'lessons'}, {quizCount}{' '}
+                              {quizCount === 1 ? 'quiz' : 'quizzes'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                              Rating
+                            </p>
+                            <p className="font-mono-tabular mt-0.5 inline-flex items-center gap-1 font-semibold text-slate-800 dark:text-slate-200">
+                              <Star
+                                className={`h-3.5 w-3.5 ${
+                                  ratingCount > 0
+                                    ? 'fill-amber-400 text-amber-400'
+                                    : 'text-slate-300 dark:text-slate-600'
+                                }`}
+                              />
+                              {ratingCount > 0 ? (
+                                <span>
+                                  {averageRating.toFixed(1)} ({ratingCount})
                                 </span>
-                                <span>({ratingCount})</span>
-                              </>
-                            ) : (
-                              <span>No ratings</span>
-                            )}
-                          </span>
+                              ) : (
+                                <span className="font-normal text-slate-500 dark:text-slate-400">
+                                  No ratings
+                                </span>
+                              )}
+                            </p>
+                          </div>
                         </div>
 
                         {/* Local Storage Progress Bar (Logged-in users only) */}
@@ -802,10 +827,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                           </div>
                         )}
 
-                        <div className="mt-4 flex items-start justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                          <span className="font-medium leading-snug text-slate-700 dark:text-slate-200">
-                            Credential: {course.certificateTitle}
-                          </span>
+                        <div className="mt-4 grid grid-cols-[1fr_auto] items-end gap-3 border-t border-slate-100 pt-3 text-xs dark:border-slate-800">
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                              Credential
+                            </p>
+                            <p className="truncate font-semibold text-slate-800 dark:text-slate-200">
+                              {course.certificateTitle}
+                            </p>
+                          </div>
                           <span className="shrink-0 font-semibold text-slate-900 dark:text-sky-400">
                             Android App
                           </span>
@@ -990,12 +1020,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       ? 'Install the Android application from Google Play to create your learner account, download full training modules with offline MP4 videos, and receive verified PDF certificates.'
                       : 'Download the Android application directly to your phone to register your learner account, save video courses for offline playback inside the app, and earn verified PDF certificates.'}
                   </p>
-                  <div className="mt-6 flex flex-wrap items-center gap-3">
-                    {renderDownloadAppAction('banner')}
+                  <div className="mt-6 space-y-2.5">
+                    <div>{renderDownloadAppAction('banner')}</div>
                     {!isPlayStoreActive && hasDirectApk && (
-                      <span className="font-mono-tabular text-xs text-slate-300">
-                        {branding.apkFileName || 'app-debug.apk'} · v{branding.apkVersion || '1.0.0'}
-                      </span>
+                      <p className="font-mono-tabular text-xs text-slate-300">
+                        Package: {branding.apkFileName || 'app-debug.apk'} (v
+                        {branding.apkVersion || '1.0.0'})
+                      </p>
                     )}
                   </div>
                   {downloadError && (
@@ -1047,13 +1078,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </section>
         </main>
 
-        {/* Quiet Footer (Strictly zero admin links) */}
+        {/* Quiet Footer (Desktop/Tablet only, strictly zero admin links) */}
         <motion.footer
           initial={{ opacity: 0, y: 18 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.3 }}
           transition={{ duration: 0.5, ease: EASE_EXPO }}
-          className="border-t border-slate-200/80 bg-white/80 py-10 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-950/80"
+          className="hidden border-t border-slate-200/80 bg-white/80 py-10 backdrop-blur-md md:block dark:border-slate-800/80 dark:bg-slate-950/80"
         >
           <div className="mx-auto flex max-w-7xl flex-col justify-between gap-6 px-4 sm:flex-row sm:items-center sm:px-6">
             <div className="flex items-center gap-2.5">
@@ -1110,6 +1141,55 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
           </div>
         </motion.footer>
+
+        {/* Mobile Bottom Navigation Bar */}
+        <nav
+          aria-label="Mobile navigation"
+          data-testid="mobile-bottom-nav"
+          className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200/85 bg-white/95 backdrop-blur-xl md:hidden dark:border-slate-800/85 dark:bg-slate-950/95"
+        >
+          <div className="mx-auto grid h-14 max-w-md grid-cols-5">
+            {LANDING_NAV_ITEMS.map((item) => {
+              const isActive = activeSection === item.id;
+              const NavIcon =
+                item.id === 'capabilities'
+                  ? Layers
+                  : item.id === 'courses'
+                  ? BookOpen
+                  : item.id === 'certificates'
+                  ? Award
+                  : item.id === 'verify'
+                  ? ShieldCheck
+                  : Smartphone;
+              const activeColor = isDark ? '#38bdf8' : accent;
+
+              return (
+                <a
+                  key={item.id}
+                  href={`#${item.id}`}
+                  onClick={(e) => handleSmoothAnchor(e, item.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  style={isActive ? { color: activeColor } : undefined}
+                  className={`relative flex flex-col items-center justify-center gap-0.5 px-1 text-[11px] whitespace-nowrap transition-colors ${
+                    isActive
+                      ? 'font-bold'
+                      : 'font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+                  }`}
+                >
+                  {isActive && (
+                    <span
+                      aria-hidden="true"
+                      style={{ backgroundColor: activeColor }}
+                      className="absolute top-0 right-3 left-3 h-[2.5px] rounded-b-full"
+                    />
+                  )}
+                  <NavIcon className="h-4 w-4 shrink-0" />
+                  <span>{item.shortLabel}</span>
+                </a>
+              );
+            })}
+          </div>
+        </nav>
       </div>
     </MotionConfig>
   );

@@ -289,7 +289,7 @@ export const CertificateVerifier: React.FC<CertificateVerifierProps> = ({ brandi
                       {verifiedCert.certificateTitle}
                     </dd>
                   </div>
-                  <div>
+                  <div className="sm:col-span-2">
                     <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">
                       Completed Course
                     </dt>
@@ -299,10 +299,17 @@ export const CertificateVerifier: React.FC<CertificateVerifierProps> = ({ brandi
                   </div>
                   <div>
                     <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                      Issued By &amp; Date
+                      Issuing Organization
                     </dt>
                     <dd className="mt-0.5 text-slate-800 dark:text-slate-200">
-                      {verifiedCert.issuerName} ·{' '}
+                      {verifiedCert.issuerName}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      Issue Date
+                    </dt>
+                    <dd className="font-mono-tabular mt-0.5 text-slate-800 dark:text-slate-200">
                       {new Date(verifiedCert.issuedAt).toLocaleDateString('en-US', {
                         year: 'numeric',
                         month: 'short',

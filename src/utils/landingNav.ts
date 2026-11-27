@@ -8,14 +8,15 @@ export type LandingSectionId =
 export interface LandingNavItem {
   id: LandingSectionId;
   label: string;
+  shortLabel: string;
 }
 
 export const LANDING_NAV_ITEMS: readonly LandingNavItem[] = [
-  { id: 'capabilities', label: 'Capabilities' },
-  { id: 'courses', label: 'Course Catalog' },
-  { id: 'certificates', label: 'Certificates' },
-  { id: 'verify', label: 'Verify' },
-  { id: 'get-app', label: 'Android App' },
+  { id: 'capabilities', label: 'Capabilities', shortLabel: 'Features' },
+  { id: 'courses', label: 'Course Catalog', shortLabel: 'Courses' },
+  { id: 'certificates', label: 'Certificates', shortLabel: 'Certs' },
+  { id: 'verify', label: 'Verify', shortLabel: 'Verify' },
+  { id: 'get-app', label: 'Android App', shortLabel: 'App' },
 ] as const;
 
 export interface SectionPosition {

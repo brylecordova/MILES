@@ -85,15 +85,17 @@ export default function App() {
                   alt={`${branding.systemName} icon`}
                   className="h-7 w-7 shrink-0 rounded-lg object-contain"
                 />
-                <span className="font-display truncate text-base font-extrabold tracking-tight text-slate-900 dark:text-white">
-                  {branding.systemName}
-                </span>
-                <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">
-                  ·
-                </span>
-                <span className="whitespace-nowrap text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  System Administrator
-                </span>
+                <div className="flex min-w-0 flex-col sm:flex-row sm:items-center sm:gap-2">
+                  <span className="font-display truncate text-sm font-extrabold tracking-tight text-slate-900 sm:text-base dark:text-white">
+                    {branding.systemName}
+                  </span>
+                  <span aria-hidden="true" className="hidden text-slate-300 sm:inline dark:text-slate-700">
+                    ·
+                  </span>
+                  <span className="truncate text-[11px] font-semibold text-slate-500 sm:text-xs dark:text-slate-400">
+                    System Administrator
+                  </span>
+                </div>
               </div>
 
               <div className="flex shrink-0 items-center gap-2.5">

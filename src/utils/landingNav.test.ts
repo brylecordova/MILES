@@ -65,3 +65,10 @@ test('handles empty section positions safely', () => {
   });
   assert.equal(active, 'capabilities');
 });
+
+test('every landing nav item provides a concise mobile shortLabel', () => {
+  for (const item of LANDING_NAV_ITEMS) {
+    assert.ok(item.shortLabel.trim().length > 0);
+    assert.ok(item.shortLabel.length <= 10);
+  }
+});

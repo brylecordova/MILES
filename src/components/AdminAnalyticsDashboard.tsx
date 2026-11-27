@@ -112,7 +112,10 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
     {
       label: 'Total Downloads',
       value: String(overview.totalDownloads),
-      sub: `${overview.activeLearners} of ${overview.totalLearners} active learners`,
+      metaLeftLabel: 'Active Learners',
+      metaLeftVal: String(overview.activeLearners),
+      metaRightLabel: 'Registered',
+      metaRightVal: String(overview.totalLearners),
       tip:
         overview.totalDownloads > overview.totalSubmissions * 1.5
           ? 'Suggestion: Add quick resume prompts to convert offline downloads into finished exams.'
@@ -122,7 +125,10 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
     {
       label: 'Completed Submissions',
       value: String(overview.totalSubmissions),
-      sub: `${overview.passRatePct}% pass rate · ${overview.pendingReviews} pending`,
+      metaLeftLabel: 'Pass Rate',
+      metaLeftVal: `${overview.passRatePct}%`,
+      metaRightLabel: 'Pending Review',
+      metaRightVal: String(overview.pendingReviews),
       tip:
         overview.pendingReviews > 0
           ? `Suggestion: Review ${overview.pendingReviews} open submission${overview.pendingReviews === 1 ? '' : 's'} to issue certificates.`
@@ -132,7 +138,10 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
     {
       label: 'Avg Reading Time',
       value: formatDurationSeconds(overview.averageReadingSeconds),
-      sub: `Per course · ${overview.averageScore}% avg score`,
+      metaLeftLabel: 'Scope',
+      metaLeftVal: 'Per course',
+      metaRightLabel: 'Avg Score',
+      metaRightVal: `${overview.averageScore}%`,
       tip:
         overview.averageReadingSeconds < 240
           ? 'Suggestion: Insert visual check-ins mid-lesson to encourage deeper reading.'
@@ -142,7 +151,10 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
     {
       label: 'Avg Quiz Retries',
       value: `${overview.averageQuizRetries || 1}x`,
-      sub: 'Attempts per quiz checkpoint',
+      metaLeftLabel: 'Basis',
+      metaLeftVal: 'Per checkpoint',
+      metaRightLabel: 'Difficulty',
+      metaRightVal: overview.averageQuizRetries >= 1.7 ? 'High retries' : 'Balanced',
       tip:
         overview.averageQuizRetries >= 1.7
           ? 'Suggestion: Review high-retry quiz distractors and clarify lesson examples.'
@@ -152,14 +164,20 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
     {
       label: 'Avg Learning Capacity',
       value: `${overview.averageLearningCapacity}/100`,
-      sub: `${tierCounts.Accelerated} accelerated · ${tierCounts.NeedsGuidance} guided`,
+      metaLeftLabel: 'Accelerated',
+      metaLeftVal: String(tierCounts.Accelerated),
+      metaRightLabel: 'Needs Guidance',
+      metaRightVal: String(tierCounts.NeedsGuidance),
       tip: 'Weighted from score accuracy (45%), first-try mastery (25%), low retries (15%), and completion (15%).',
       icon: <TrendingUp className="h-4 w-4 text-blue-700 dark:text-sky-400" />,
     },
     {
       label: 'Certificates Issued',
       value: String(overview.totalCertificates),
-      sub: `${overview.approvedSubmissions} approved completions`,
+      metaLeftLabel: 'Approved',
+      metaLeftVal: String(overview.approvedSubmissions),
+      metaRightLabel: 'Pass Rate',
+      metaRightVal: `${overview.passRatePct}%`,
       tip: 'Suggestion: Enable custom per-course seals so each credential reflects its track.',
       icon: <Award className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />,
     },
@@ -168,7 +186,7 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
   return (
     <div className="space-y-6">
       {/* Header Row */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
             Training Analytics &amp; Learner Telemetry
@@ -177,14 +195,14 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
             Track course popularity, offline downloads, average reading duration, quiz retries, and individual learning capacity.
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           {overview.pendingReviews > 0 && (
             <button
               type="button"
               onClick={onOpenSubmissions}
-              className="flex min-h-[40px] items-center gap-2 whitespace-nowrap rounded-xl border-2 border-amber-400 bg-amber-100 px-3.5 text-xs font-bold text-amber-950 hover:bg-amber-200 dark:border-amber-600 dark:bg-amber-950/70 dark:text-amber-100 dark:hover:bg-amber-900/70"
+              className="flex min-h-[40px] items-center gap-2 whitespace-nowrap rounded-xl border border-amber-300 bg-amber-100/90 px-3.5 text-xs font-bold text-amber-950 hover:bg-amber-200 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-100 dark:hover:bg-amber-900/70"
             >
-              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-600 dark:bg-amber-400" />
+              <Clock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
               <span>
                 {overview.pendingReviews} Pending Certificate{overview.pendingReviews === 1 ? '' : 's'}
               </span>
@@ -219,7 +237,24 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
               <p className="font-mono-tabular mt-2 text-2xl font-bold text-slate-900 dark:text-white">
                 {kpi.value}
               </p>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{kpi.sub}</p>
+              <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-50/90 px-3 py-2 text-xs dark:bg-slate-950/60">
+                <div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {kpi.metaLeftLabel}
+                  </p>
+                  <p className="font-mono-tabular font-semibold text-slate-800 dark:text-slate-200">
+                    {kpi.metaLeftVal}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {kpi.metaRightLabel}
+                  </p>
+                  <p className="font-mono-tabular font-semibold text-slate-800 dark:text-slate-200">
+                    {kpi.metaRightVal}
+                  </p>
+                </div>
+              </div>
             </div>
             <p className="mt-3 border-t border-slate-100 pt-2.5 text-xs leading-relaxed text-slate-600 dark:border-slate-800 dark:text-slate-300">
               {kpi.tip}
@@ -234,43 +269,64 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
           {
             label: 'Most Downloaded Course',
             course: highlights.mostDownloadedCourse,
-            metric: highlights.mostDownloadedCourse
-              ? `${highlights.mostDownloadedCourse.downloadCount} downloads · ${highlights.mostDownloadedCourse.completionRatePct}% finished`
+            primary: highlights.mostDownloadedCourse
+              ? `${highlights.mostDownloadedCourse.downloadCount} downloads`
               : 'No downloads yet',
+            secondary: highlights.mostDownloadedCourse
+              ? `${highlights.mostDownloadedCourse.completionRatePct}% finished`
+              : '—',
           },
           {
             label: 'Most Completed Course',
             course: highlights.mostCompletedCourse,
-            metric: highlights.mostCompletedCourse
-              ? `${highlights.mostCompletedCourse.submissionCount} completions · ${highlights.mostCompletedCourse.approvedCount} approved`
+            primary: highlights.mostCompletedCourse
+              ? `${highlights.mostCompletedCourse.submissionCount} completions`
               : 'No completions yet',
+            secondary: highlights.mostCompletedCourse
+              ? `${highlights.mostCompletedCourse.approvedCount} approved`
+              : '—',
           },
           {
             label: 'Highest Average Score',
             course: highlights.highestScoreCourse,
-            metric: highlights.highestScoreCourse
-              ? `${highlights.highestScoreCourse.averageScore}% avg · ${highlights.highestScoreCourse.passRatePct}% pass`
+            primary: highlights.highestScoreCourse
+              ? `${highlights.highestScoreCourse.averageScore}% avg`
               : 'Awaiting scores',
+            secondary: highlights.highestScoreCourse
+              ? `${highlights.highestScoreCourse.passRatePct}% pass rate`
+              : '—',
           },
           {
             label: 'Highest Quiz Retries',
             course: highlights.highestRetryCourse,
-            metric: highlights.highestRetryCourse
-              ? `${highlights.highestRetryCourse.averageQuizRetries}x avg attempts`
+            primary: highlights.highestRetryCourse
+              ? `${highlights.highestRetryCourse.averageQuizRetries}x attempts`
               : 'Awaiting quiz data',
+            secondary: highlights.highestRetryCourse
+              ? `${highlights.highestRetryCourse.submissionCount} graded`
+              : '—',
           },
         ].map((item) => (
           <article
             key={item.label}
-            className="rounded-2xl border border-slate-200/80 bg-white/85 p-4 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/75"
+            className="flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white/85 p-4 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/75"
           >
-            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{item.label}</p>
-            <p className="mt-1.5 line-clamp-2 text-sm leading-snug font-bold text-slate-900 dark:text-white">
-              {item.course?.title || 'No course data'}
-            </p>
-            <p className="font-mono-tabular mt-1.5 text-xs font-medium text-blue-700 dark:text-sky-400">
-              {item.metric}
-            </p>
+            <div>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                {item.label}
+              </p>
+              <p className="mt-1.5 line-clamp-2 text-sm leading-snug font-bold text-slate-900 dark:text-white">
+                {item.course?.title || 'No course data'}
+              </p>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2.5 text-xs dark:border-slate-800">
+              <span className="font-mono-tabular font-semibold text-blue-700 dark:text-sky-400">
+                {item.primary}
+              </span>
+              <span className="font-mono-tabular text-right text-slate-500 dark:text-slate-400">
+                {item.secondary}
+              </span>
+            </div>
           </article>
         ))}
       </div>
@@ -311,7 +367,7 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
                 const compPct = Math.round((c.submissionCount / maxBarDownloads) * 100);
                 return (
                   <div key={c.courseId} className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-3 text-xs">
+                    <div className="flex flex-col gap-0.5 text-xs sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                       <span className="truncate font-semibold text-slate-800 dark:text-slate-100">
                         {c.title}
                       </span>
@@ -618,10 +674,12 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
                         {learner.coursesCompleted > 0 ? `${learner.averageScore}%` : '—'}
                       </td>
                       <td className="py-3 pr-4">
-                        <span className={`font-semibold ${tierColor}`}>
-                          <span className="font-mono-tabular">{learner.learningCapacityScore}/100</span>{' '}
-                          · {learner.learningCapacityTier}
-                        </span>
+                        <p className={`font-mono-tabular font-bold ${tierColor}`}>
+                          {learner.learningCapacityScore}/100
+                        </p>
+                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                          {learner.learningCapacityTier}
+                        </p>
                       </td>
                       <td className="font-mono-tabular py-3 pr-4 text-right text-slate-700 dark:text-slate-300">
                         {earnedMedals}/{learner.medals.length}
@@ -658,27 +716,48 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
           aria-label={`Details for ${selectedLearner.name}`}
           className="rounded-2xl border border-slate-300 bg-white/90 p-6 backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/85"
         >
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4 dark:border-slate-800">
-            <div>
-              <p className="text-xs font-semibold text-blue-700 dark:text-sky-400">
-                Individual Learner Diagnostics
-              </p>
-              <h3 className="mt-1 text-lg font-bold text-slate-900 dark:text-white">
-                {selectedLearner.name}
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {selectedLearner.email} · Weakest topic: {selectedLearner.weakestTopic} · First-try
-                accuracy: {selectedLearner.firstAttemptAccuracyPct}%
-              </p>
+          <div className="space-y-4 border-b border-slate-200 pb-4 dark:border-slate-800">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold text-blue-700 dark:text-sky-400">
+                  Individual Learner Diagnostics
+                </p>
+                <h3 className="mt-1 text-lg font-bold text-slate-900 dark:text-white">
+                  {selectedLearner.name}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedLearner(null)}
+                aria-label="Close learner details"
+                className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setSelectedLearner(null)}
-              aria-label="Close learner details"
-              className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              <X className="h-4 w-4" />
-            </button>
+
+            <div className="grid gap-3 rounded-xl bg-slate-50/90 p-3 text-xs sm:grid-cols-3 dark:bg-slate-950/60">
+              <div className="min-w-0">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">Email</p>
+                <p className="mt-0.5 truncate font-medium text-slate-800 dark:text-slate-200">
+                  {selectedLearner.email}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">Weakest Topic</p>
+                <p className="mt-0.5 font-semibold text-slate-800 dark:text-slate-200">
+                  {selectedLearner.weakestTopic}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  First-Try Accuracy
+                </p>
+                <p className="font-mono-tabular mt-0.5 font-semibold text-slate-800 dark:text-slate-200">
+                  {selectedLearner.firstAttemptAccuracyPct}%
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="mt-4 grid gap-4 md:grid-cols-4">
