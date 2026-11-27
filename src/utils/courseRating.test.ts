@@ -3,6 +3,9 @@ import test from 'node:test';
 import type { Course } from '../types/training';
 import {
   applyCourseRating,
+  computeCatalogBaselineRating,
+  computeCoursePopularityPercent,
+  computeCoursePopularityScore,
   computeCourseRatingStats,
   filterAndSortCoursesByRating,
   getLandingDisplayedCourses,
@@ -112,14 +115,35 @@ test('filterAndSortCoursesByRating filters by query/category and sorts by highly
   );
 });
 
-test('getLandingDisplayedCourses caps initial view to top 3 most rated and expands on search or showAll', () => {
-  const c1 = makeCourse({ _id: 'c1', title: 'Alpha', averageRating: 4.9, ratingCount: 2 });
-  const c2 = makeCourse({ _id: 'c2', title: 'Beta', averageRating: 4.5, ratingCount: 10 });
-  const c3 = makeCourse({ _id: 'c3', title: 'Gamma', averageRating: 4.7, ratingCount: 6 });
-  const c4 = makeCourse({ _id: 'c4', title: 'Delta', averageRating: 5.0, ratingCount: 6 });
-  const c5 = makeCourse({ _id: 'c5', title: 'Epsilon Searchable', averageRating: 3.8, ratingCount: 1 });
+test('computeCoursePopularityScore and percent rank high-rated popular courses fairly', () => {
+  const provenTop = makeCourse({ _id: 'proven', averageRating: 4.8, ratingCount: 25 });
+  const singleFive = makeCourse({ _id: 'single', averageRating: 5.0, ratingCount: 1 });
+  const noisyLow = makeCourse({ _id: 'low', averageRating: 2.2, ratingCount: 40 });
+  const unrated = makeCourse({ _id: 'unrated', averageRating: 0, ratingCount: 0 });
 
-  // Initial view: top 3 by ratingCount descending, tie-broken by averageRating descending
+  const baseline = computeCatalogBaselineRating([provenTop, singleFive, noisyLow, unrated]);
+  assert.ok(baseline > 3 && baseline < 3.5);
+
+  const provenScore = computeCoursePopularityScore(provenTop, baseline);
+  const singleScore = computeCoursePopularityScore(singleFive, baseline);
+  const lowScore = computeCoursePopularityScore(noisyLow, baseline);
+  const unratedScore = computeCoursePopularityScore(unrated, baseline);
+
+  assert.ok(provenScore > singleScore);
+  assert.ok(singleScore > lowScore);
+  assert.equal(unratedScore, 0);
+  assert.equal(computeCoursePopularityPercent(unrated, baseline), 0);
+  assert.ok(computeCoursePopularityPercent(provenTop, baseline) >= 85);
+});
+
+test('getLandingDisplayedCourses caps initial view to top 3 most popular and expands on search or showAll', () => {
+  const c1 = makeCourse({ _id: 'c1', title: 'Alpha', averageRating: 5.0, ratingCount: 1 });
+  const c2 = makeCourse({ _id: 'c2', title: 'Beta', averageRating: 4.9, ratingCount: 20 });
+  const c3 = makeCourse({ _id: 'c3', title: 'Gamma', averageRating: 4.7, ratingCount: 10 });
+  const c4 = makeCourse({ _id: 'c4', title: 'Delta', averageRating: 4.8, ratingCount: 12 });
+  const c5 = makeCourse({ _id: 'c5', title: 'Epsilon Searchable', averageRating: 2.1, ratingCount: 30 });
+
+  // Proven high-rated + high-volume courses outrank a single 5.0 review and a low-rated high-volume course
   assert.deepEqual(
     getLandingDisplayedCourses([c1, c2, c3, c4, c5], '').map((c) => c._id),
     ['c2', 'c4', 'c3']
@@ -131,7 +155,7 @@ test('getLandingDisplayedCourses caps initial view to top 3 most rated and expan
     ['c5']
   );
 
-  // showAll shows every course sorted by most rated
+  // showAll returns all courses ordered by popularity score
   assert.deepEqual(
     getLandingDisplayedCourses([c1, c2, c3, c4, c5], '', true).map((c) => c._id),
     ['c2', 'c4', 'c3', 'c1', 'c5']

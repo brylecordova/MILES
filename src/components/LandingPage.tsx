@@ -6,12 +6,12 @@ import {
   CheckCircle2,
   Download,
   ExternalLink,
+  Eye,
   Film,
   Layers,
   Moon,
   Search,
   ShieldCheck,
-  Smartphone,
   Star,
   Sun,
   X,
@@ -19,6 +19,7 @@ import {
 import type { Course, SystemBranding } from '../types/training';
 import { downloadUploadedApk, getLearnerToken } from '../utils/api';
 import {
+  DEFAULT_SYSTEM_ICON_URL,
   getDefaultCertificateDesign,
   resolveCertificateElementText,
 } from '../utils/certificateDefaults';
@@ -28,13 +29,18 @@ import {
   readCourseProgressFromLocalStorage,
   type StoredLocalProgressEntry,
 } from '../utils/courseCatalog';
-import { getLandingDisplayedCourses } from '../utils/courseRating';
+import {
+  computeCatalogBaselineRating,
+  getLandingDisplayedCourses,
+} from '../utils/courseRating';
 import {
   LANDING_NAV_ITEMS,
   computeActiveLandingSection,
   type LandingSectionId,
 } from '../utils/landingNav';
+import { AndroidIcon } from './AndroidIcon';
 import { CertificateVerifier } from './CertificateVerifier';
+import { CoursePreviewModal } from './CoursePreviewModal';
 import { CourseBannerImage } from './MediaRenderer';
 
 interface LandingPageProps {
@@ -63,6 +69,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [courseSearch, setCourseSearch] = useState('');
   const [showAllCourses, setShowAllCourses] = useState(false);
+  const [previewCourse, setPreviewCourse] = useState<Course | null>(null);
   const [activeSection, setActiveSection] = useState<LandingSectionId>('capabilities');
   const [localProgressMap, setLocalProgressMap] = useState<
     Record<string, StoredLocalProgressEntry>
@@ -125,6 +132,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     () => getLandingDisplayedCourses(courses, courseSearch, showAllCourses),
     [courses, courseSearch, showAllCourses]
   );
+  const catalogBaselineRating = useMemo(() => computeCatalogBaselineRating(courses), [courses]);
   const { scrollYProgress: heroScrollProgress } = useScroll({
     target: heroRef,
     offset: ['start start', 'end start'],
@@ -280,7 +288,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               className="flex shrink-0 items-center gap-2.5 whitespace-nowrap"
             >
               <img
-                src={branding.iconUrl || '/icon.svg'}
+                src={branding.iconUrl || DEFAULT_SYSTEM_ICON_URL}
                 alt={`${branding.systemName} icon`}
                 referrerPolicy="no-referrer"
                 className="h-8 w-8 rounded-lg object-contain"
@@ -356,7 +364,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   className="font-mono-tabular text-xs font-bold tracking-widest uppercase"
                   style={{ color: isDark ? '#38bdf8' : accent }}
                 >
-                  Android Field Certification Platform
+                  {branding.systemName} · Mobile Learning Experience System
                 </motion.p>
 
                 <motion.h1
@@ -374,9 +382,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   transition={{ duration: 0.55, delay: 0.18, ease: EASE_EXPO }}
                   className="mt-4 text-base leading-relaxed text-slate-600 dark:text-slate-300 sm:text-lg"
                 >
-                  {branding.tagline} Learners sign in directly inside the Android app, download
-                  full video courses for offline field study, complete multi-format assessments, and
-                  earn official PDF credentials.
+                  Welcome to the Mobile Learning Experience System. Learners sign in directly
+                  inside the Android app, download full video courses for offline field study,
+                  complete multi-format assessments, and earn official PDF credentials.
                 </motion.p>
 
                 <motion.div
@@ -627,8 +635,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                           courses.length === 1 ? 'course' : 'courses'
                         }`
                       : courses.length > 3 && !showAllCourses
-                      ? `Top 3 most rated of ${courses.length} courses`
-                      : `Top ${courses.length} most rated ${
+                      ? `Top 3 most popular of ${courses.length} courses`
+                      : `Top ${courses.length} most popular ${
                           courses.length === 1 ? 'course' : 'courses'
                         }`}
                   </p>
@@ -714,6 +722,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   return (
                     <motion.article
                       key={course._id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Preview course: ${course.title}`}
+                      onClick={() => setPreviewCourse(course)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setPreviewCourse(course);
+                        }
+                      }}
                       initial={{
                         opacity: 0,
                         y: 48,
@@ -729,7 +747,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                         damping: 22,
                       }}
                       whileHover={{ y: -6, transition: { duration: 0.2 } }}
-                      className="flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 backdrop-blur-md transition-shadow duration-200 hover:shadow-lg dark:border-slate-800/80 dark:bg-slate-900/75"
+                      className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 backdrop-blur-md transition-all duration-200 hover:border-blue-400/80 hover:shadow-lg focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:outline-none dark:border-slate-800/80 dark:bg-slate-900/75 dark:hover:border-sky-500/70"
                     >
                       <CourseBannerImage
                         url={course.bannerUrl}
@@ -836,8 +854,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                               {course.certificateTitle}
                             </p>
                           </div>
-                          <span className="shrink-0 font-semibold text-slate-900 dark:text-sky-400">
-                            Android App
+                          <span className="inline-flex shrink-0 items-center gap-1.5 font-semibold text-blue-700 transition-transform group-hover:translate-x-0.5 dark:text-sky-400">
+                            <Eye className="h-3.5 w-3.5" />
+                            <span>Preview Course</span>
                           </span>
                         </div>
                       </div>
@@ -971,7 +990,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                               style={{ backgroundColor: sampleDesign.accentColor || accent }}
                             >
                               <img
-                                src={branding.iconUrl || '/icon.svg'}
+                                src={branding.iconUrl || DEFAULT_SYSTEM_ICON_URL}
                                 alt={branding.systemName}
                                 referrerPolicy="no-referrer"
                                 className="h-5 w-5 rounded object-contain"
@@ -1089,7 +1108,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="mx-auto flex max-w-7xl flex-col justify-between gap-6 px-4 sm:flex-row sm:items-center sm:px-6">
             <div className="flex items-center gap-2.5">
               <img
-                src={branding.iconUrl || '/icon.svg'}
+                src={branding.iconUrl || DEFAULT_SYSTEM_ICON_URL}
                 alt={branding.systemName}
                 referrerPolicy="no-referrer"
                 className="h-6 w-6 rounded object-contain"
@@ -1160,7 +1179,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   ? Award
                   : item.id === 'verify'
                   ? ShieldCheck
-                  : Smartphone;
+                  : AndroidIcon;
               const activeColor = isDark ? '#38bdf8' : accent;
 
               return (
@@ -1183,13 +1202,33 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       className="absolute top-0 right-3 left-3 h-[2.5px] rounded-b-full"
                     />
                   )}
-                  <NavIcon className="h-4 w-4 shrink-0" />
+                  {NavIcon === AndroidIcon ? (
+                    <AndroidIcon
+                      data-testid="landing-mobile-android-icon"
+                      className="h-4 w-4 shrink-0"
+                    />
+                  ) : (
+                    <NavIcon className="h-4 w-4 shrink-0" />
+                  )}
                   <span>{item.shortLabel}</span>
                 </a>
               );
             })}
           </div>
         </nav>
+
+        <CoursePreviewModal
+          course={previewCourse}
+          branding={branding}
+          accent={accent}
+          isDark={isDark}
+          catalogBaselineRating={catalogBaselineRating}
+          onClose={() => setPreviewCourse(null)}
+          onOpenInstall={() => {
+            setPreviewCourse(null);
+            onOpenInstall();
+          }}
+        />
       </div>
     </MotionConfig>
   );

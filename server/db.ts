@@ -19,6 +19,7 @@ export interface StoredUser extends UserAccount {
 export interface AdminSettingsDoc {
   _id: string;
   adminPasscodeHash?: string;
+  adminName?: string;
   claimedAt?: string;
   branding?: SystemBranding;
 }
@@ -297,10 +298,12 @@ class DatabaseRepository {
     return this.localData.settings.find((s) => s._id === 'admin') ?? null;
   }
 
-  async setAdminPasscodeHash(hash: string): Promise<void> {
+  async setAdminPasscodeHash(hash: string, adminName?: string): Promise<void> {
+    const cleanName = adminName?.trim();
     const doc: AdminSettingsDoc = {
       _id: 'admin',
       adminPasscodeHash: hash,
+      ...(cleanName ? { adminName: cleanName } : {}),
       claimedAt: new Date().toISOString(),
     };
     if (this.mode === 'mongodb') {
@@ -313,8 +316,31 @@ class DatabaseRepository {
     }
     const idx = this.localData.settings.findIndex((s) => s._id === 'admin');
     if (idx === -1) this.localData.settings.push(doc);
-    else this.localData.settings[idx] = doc;
+    else this.localData.settings[idx] = { ...this.localData.settings[idx], ...doc };
     this.saveLocal();
+  }
+
+  async setAdminName(adminName: string): Promise<string> {
+    const cleanName = adminName.trim();
+    if (this.mode === 'mongodb') {
+      await this.col<AdminSettingsDoc>('settings').updateOne(
+        { _id: 'admin' },
+        { $set: { _id: 'admin', adminName: cleanName } },
+        { upsert: true }
+      );
+      return cleanName;
+    }
+    const idx = this.localData.settings.findIndex((s) => s._id === 'admin');
+    if (idx === -1) {
+      this.localData.settings.push({ _id: 'admin', adminName: cleanName });
+    } else {
+      this.localData.settings[idx] = {
+        ...this.localData.settings[idx],
+        adminName: cleanName,
+      };
+    }
+    this.saveLocal();
+    return cleanName;
   }
 
   async getSystemBranding(): Promise<SystemBranding> {

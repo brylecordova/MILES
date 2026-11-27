@@ -10,12 +10,14 @@ import { downloadCertificatePdf, generateCertificatePdfBase64 } from '../utils/c
 
 interface CertificateModalProps {
   certificate: CertificateRecord | null;
+  isAdmin?: boolean;
   onClose: () => void;
   onUpdated: (updated: CertificateRecord) => void;
 }
 
 export const CertificateModal: React.FC<CertificateModalProps> = ({
   certificate,
+  isAdmin = false,
   onClose,
   onUpdated,
 }) => {
@@ -46,7 +48,12 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
     setEmailStatus(null);
     try {
       const pdfBase64 = generateCertificatePdfBase64(certificate);
-      const res = await api.emailCertificate(certificate._id, recipientEmail, pdfBase64);
+      const res = await api.emailCertificate(
+        certificate._id,
+        recipientEmail,
+        pdfBase64,
+        isAdmin ? 'admin' : 'learner'
+      );
       if (res.certificate) {
         onUpdated(res.certificate);
       }
@@ -186,7 +193,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
             htmlFor="cert-email-input"
             className="mb-2 block text-sm font-semibold text-slate-900 dark:text-white"
           >
-            Email PDF Certificate to Yourself
+            {isAdmin ? 'Email PDF Certificate' : 'Email PDF Certificate to Yourself'}
           </label>
           <div className="flex flex-col gap-2 sm:flex-row">
             <input

@@ -539,10 +539,12 @@ async function startServer() {
   app.get('/api/admin/auth/status', async (_req, res) => {
     const envPasscode = process.env.ADMIN_PASSCODE?.trim();
     const settings = await db.getAdminSettings();
+    const adminName = settings?.adminName?.trim() || process.env.ADMIN_NAME?.trim() || '';
     res.json({
       configuredViaEnv: Boolean(envPasscode),
       hasClaimedPasscode: Boolean(settings?.adminPasscodeHash),
       databaseMode: db.getMode(),
+      adminName,
     });
   });
 
@@ -558,17 +560,19 @@ async function startServer() {
       return;
     }
     const passcode = typeof req.body?.passcode === 'string' ? req.body.passcode.trim() : '';
+    const adminName = typeof req.body?.adminName === 'string' ? req.body.adminName.trim() : '';
     if (passcode.length < 6) {
       res.status(400).json({ error: 'Choose an admin passcode of at least 6 characters.' });
       return;
     }
-    await db.setAdminPasscodeHash(hashPassword(passcode));
+    await db.setAdminPasscodeHash(hashPassword(passcode), adminName);
     const token = signToken({ sub: 'admin', role: 'admin' });
-    res.status(201).json({ token });
+    res.status(201).json({ token, adminName });
   });
 
   app.post('/api/admin/auth/login', async (req, res) => {
     const passcode = typeof req.body?.passcode === 'string' ? req.body.passcode.trim() : '';
+    const requestedName = typeof req.body?.adminName === 'string' ? req.body.adminName.trim() : '';
     if (!passcode) {
       res.status(400).json({ error: 'Admin passcode is required.' });
       return;
@@ -579,7 +583,11 @@ async function startServer() {
         res.status(401).json({ error: 'Invalid admin passcode.' });
         return;
       }
-      res.json({ token: signToken({ sub: 'admin', role: 'admin' }) });
+      const existingSettings = await db.getAdminSettings();
+      const adminName = requestedName
+        ? await db.setAdminName(requestedName)
+        : existingSettings?.adminName?.trim() || process.env.ADMIN_NAME?.trim() || '';
+      res.json({ token: signToken({ sub: 'admin', role: 'admin' }), adminName });
       return;
     }
     const settings = await db.getAdminSettings();
@@ -587,7 +595,26 @@ async function startServer() {
       res.status(401).json({ error: 'Invalid admin passcode.' });
       return;
     }
-    res.json({ token: signToken({ sub: 'admin', role: 'admin' }) });
+    const adminName = requestedName
+      ? await db.setAdminName(requestedName)
+      : settings.adminName?.trim() || '';
+    res.json({ token: signToken({ sub: 'admin', role: 'admin' }), adminName });
+  });
+
+  app.get('/api/admin/profile', requireAdmin, async (_req, res) => {
+    const settings = await db.getAdminSettings();
+    const adminName = settings?.adminName?.trim() || process.env.ADMIN_NAME?.trim() || '';
+    res.json({ adminName });
+  });
+
+  app.put('/api/admin/profile', requireAdmin, async (req, res) => {
+    const adminName = typeof req.body?.adminName === 'string' ? req.body.adminName.trim() : '';
+    if (!adminName) {
+      res.status(400).json({ error: 'Administrator full name is required.' });
+      return;
+    }
+    const saved = await db.setAdminName(adminName);
+    res.json({ adminName: saved });
   });
 
   // ---- Courses ----
@@ -863,6 +890,71 @@ async function startServer() {
     res.json({ submissions });
   });
 
+  app.get('/api/admin/certificates', requireAdmin, async (_req, res) => {
+    try {
+      const [rawCerts, courses, branding] = await Promise.all([
+        db.listAllCertificates(),
+        db.listCourses(true),
+        db.getSystemBranding(),
+      ]);
+      const coursesById = new Map(courses.map((c) => [c._id, c]));
+      const certificates = rawCerts.map((cert) => {
+        const course = coursesById.get(cert.courseId);
+        return {
+          ...cert,
+          certificateDesign:
+            cert.certificateDesign ??
+            course?.certificateDesign ??
+            getDefaultCertificateDesign(cert.issuerName, cert.certificateTitle),
+          systemIconUrl: cert.systemIconUrl || branding.iconUrl,
+        };
+      });
+      res.json({ certificates });
+    } catch (err) {
+      console.error('Admin certificates error:', err);
+      res.status(500).json({ error: 'Failed to load certificates.' });
+    }
+  });
+
+  app.get('/api/admin/submissions/:id/certificate', requireAdmin, async (req, res) => {
+    try {
+      const subId = String(req.params.id);
+      const submission = await db.getSubmissionById(subId);
+      if (!submission) {
+        res.status(404).json({ error: 'Submission not found.' });
+        return;
+      }
+      let cert: CertificateRecord | null = null;
+      if (submission.certificateId) {
+        cert = await db.getCertificateById(submission.certificateId);
+      }
+      if (!cert) {
+        const allCerts = await db.listAllCertificates();
+        cert = allCerts.find((c) => c.submissionId === submission._id) ?? null;
+      }
+      if (!cert) {
+        res.status(404).json({ error: 'Certificate not found for this submission.' });
+        return;
+      }
+      const [course, branding] = await Promise.all([
+        cert.certificateDesign ? Promise.resolve(null) : db.getCourseById(cert.courseId),
+        db.getSystemBranding(),
+      ]);
+      const enriched: CertificateRecord = {
+        ...cert,
+        certificateDesign:
+          cert.certificateDesign ??
+          course?.certificateDesign ??
+          getDefaultCertificateDesign(cert.issuerName, cert.certificateTitle),
+        systemIconUrl: cert.systemIconUrl || branding.iconUrl,
+      };
+      res.json({ certificate: enriched });
+    } catch (err) {
+      console.error('Admin submission certificate error:', err);
+      res.status(500).json({ error: 'Failed to load submission certificate.' });
+    }
+  });
+
   app.get('/api/admin/analytics', requireAdmin, async (_req, res) => {
     try {
       const [courses, users, submissions, certificates, downloads] = await Promise.all([
@@ -1004,11 +1096,20 @@ async function startServer() {
     res.json({ certificates });
   });
 
-  app.post('/api/certificates/:id/email', requireLearner, async (req: AuthedRequest, res) => {
+  app.post('/api/certificates/:id/email', async (req, res) => {
     try {
+      const payload = extractBearer(req);
+      if (!payload) {
+        res.status(401).json({ error: 'Authentication required.' });
+        return;
+      }
       const certId = String(req.params.id);
       const cert = await db.getCertificateById(certId);
-      if (!cert || cert.userId !== req.learner!._id) {
+      if (!cert) {
+        res.status(404).json({ error: 'Certificate not found.' });
+        return;
+      }
+      if (payload.role !== 'admin' && (payload.role !== 'learner' || cert.userId !== payload.sub)) {
         res.status(404).json({ error: 'Certificate not found.' });
         return;
       }

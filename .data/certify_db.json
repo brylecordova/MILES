@@ -854,5 +854,12 @@
       "downloadedAt": "2026-11-26T09:15:00.000Z"
     }
   ],
-  "settings": []
+  "settings": [
+    {
+      "_id": "admin",
+      "adminPasscodeHash": "aba2dc6e27443ef399e44082d144fa9d:78da356e9519ba567ca3399cbaabadf782b2e1ea69035a016e95e76a7805124010a36e2f6a9dd29ac861d829b79b212dfa99ede6359e145d2e609dcb8cb6ee93",
+      "adminName": "Bryle Cordova",
+      "claimedAt": "2026-11-27T02:04:15.216Z"
+    }
+  ]
 }

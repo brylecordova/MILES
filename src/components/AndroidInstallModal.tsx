@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Download, ExternalLink, Film, ShieldCheck, Smartphone, X } from 'lucide-react';
+import { Download, ExternalLink, Film, ShieldCheck, X } from 'lucide-react';
 import type { SystemBranding } from '../types/training';
 import { downloadUploadedApk } from '../utils/api';
+import { AndroidIcon } from './AndroidIcon';
 
 interface AndroidInstallModalProps {
   open: boolean;
@@ -47,7 +48,7 @@ export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-sky-950/70 dark:text-sky-300">
-              <Smartphone className="h-5 w-5" />
+              <AndroidIcon className="h-5 w-5" />
             </div>
             <div>
               <h2

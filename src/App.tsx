@@ -7,7 +7,10 @@ import { LandingPage } from './components/LandingPage';
 import { useTheme } from './hooks/useTheme';
 import type { Course, SystemBranding } from './types/training';
 import { api } from './utils/api';
-import { getDefaultSystemBranding } from './utils/certificateDefaults';
+import {
+  DEFAULT_SYSTEM_ICON_URL,
+  getDefaultSystemBranding,
+} from './utils/certificateDefaults';
 
 function isSystemAdminPath(pathname: string): boolean {
   return pathname === '/systemadministrator' || pathname.startsWith('/systemadministrator/');
@@ -61,7 +64,7 @@ export default function App() {
   useEffect(() => {
     document.title = isAdminRoute
       ? `${branding.systemName} — System Administrator`
-      : `${branding.systemName} — Mobile Training & Certification`;
+      : `${branding.systemName} — Mobile Learning Experience System`;
 
     if (branding.iconUrl) {
       const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
@@ -81,7 +84,7 @@ export default function App() {
             <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-2.5">
                 <img
-                  src={branding.iconUrl || '/icon.svg'}
+                  src={branding.iconUrl || DEFAULT_SYSTEM_ICON_URL}
                   alt={`${branding.systemName} icon`}
                   className="h-7 w-7 shrink-0 rounded-lg object-contain"
                 />

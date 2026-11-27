@@ -304,9 +304,10 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
         <button
           type="button"
           onClick={onExit}
-          className="mt-4 min-h-[44px] rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white dark:bg-sky-500 dark:text-slate-950"
+          className="mt-4 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white dark:bg-sky-500 dark:text-slate-950"
         >
-          Back to Courses
+          <ArrowLeft className="h-4 w-4 shrink-0" />
+          <span>Back to Courses</span>
         </button>
       </div>
     );

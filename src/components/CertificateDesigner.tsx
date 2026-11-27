@@ -51,7 +51,7 @@ export const CertificateDesigner: React.FC<CertificateDesignerProps> = ({
     userName: 'Jordan Vance',
     courseTitle: courseTitle || 'Field Safety Certification',
     certificateTitle: certificateTitle || 'Certified Specialist',
-    issuerName: issuerName || systemBranding.systemName || 'CertiField Academy',
+    issuerName: issuerName || systemBranding.systemName || 'MiLES Academy',
     score: 96,
     issuedAt: new Date().toISOString(),
     certificateCode: 'CF-2026-SAMPLE',

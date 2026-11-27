@@ -1,6 +1,13 @@
 import type { Course, CourseRatingEntry } from '../types/training';
 
-export type CourseRatingFilterMode = 'all' | 'highly_rated' | 'most_rated' | 'four_plus';
+export type CourseRatingFilterMode =
+  | 'all'
+  | 'popular'
+  | 'highly_rated'
+  | 'most_rated'
+  | 'four_plus';
+
+export const POPULARITY_CONFIDENCE_THRESHOLD = 5;
 
 export function validateRatingValue(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
@@ -89,17 +96,56 @@ export function toPublicCourseWithRatings(course: Course, viewerUserId?: string)
   };
 }
 
+export function computeCatalogBaselineRating(courses: Course[]): number {
+  let weightedSum = 0;
+  let totalCount = 0;
+  for (const course of courses) {
+    const count = Math.max(0, course.ratingCount ?? 0);
+    const avg = Math.max(0, Math.min(5, course.averageRating ?? 0));
+    if (count > 0 && avg > 0) {
+      weightedSum += avg * count;
+      totalCount += count;
+    }
+  }
+  if (totalCount === 0) return 4.0;
+  return Math.round((weightedSum / totalCount) * 100) / 100;
+}
+
+export function computeCoursePopularityScore(
+  course: Course,
+  catalogBaselineRating = 4.0,
+  confidenceThreshold = POPULARITY_CONFIDENCE_THRESHOLD
+): number {
+  const v = Math.max(0, course.ratingCount ?? 0);
+  const R = Math.max(0, Math.min(5, course.averageRating ?? 0));
+  if (v === 0) return 0;
+  const m = Math.max(1, confidenceThreshold);
+  const score = (v / (v + m)) * R + (m / (v + m)) * catalogBaselineRating;
+  return Math.round(score * 100) / 100;
+}
+
+export function computeCoursePopularityPercent(
+  course: Course,
+  catalogBaselineRating = 4.0,
+  confidenceThreshold = POPULARITY_CONFIDENCE_THRESHOLD
+): number {
+  const score = computeCoursePopularityScore(course, catalogBaselineRating, confidenceThreshold);
+  return Math.max(0, Math.min(100, Math.round((score / 5) * 100)));
+}
+
 export function filterAndSortCoursesByRating(
   courses: Course[],
   options: {
     query?: string;
     category?: string;
     ratingMode?: CourseRatingFilterMode;
+    catalogBaselineRating?: number;
   }
 ): Course[] {
   const query = (options.query ?? '').trim().toLowerCase();
   const category = (options.category ?? 'All').trim();
   const ratingMode = options.ratingMode ?? 'all';
+  const baseline = options.catalogBaselineRating ?? computeCatalogBaselineRating(courses);
 
   const filtered = courses.filter((course) => {
     if (category && category !== 'All' && course.category !== category) {
@@ -117,6 +163,17 @@ export function filterAndSortCoursesByRating(
     }
     return true;
   });
+
+  if (ratingMode === 'popular') {
+    return [...filtered].sort((a, b) => {
+      const scoreDiff =
+        computeCoursePopularityScore(b, baseline) - computeCoursePopularityScore(a, baseline);
+      if (scoreDiff !== 0) return scoreDiff;
+      const countDiff = (b.ratingCount ?? 0) - (a.ratingCount ?? 0);
+      if (countDiff !== 0) return countDiff;
+      return (b.averageRating ?? 0) - (a.averageRating ?? 0);
+    });
+  }
 
   if (ratingMode === 'highly_rated') {
     return [...filtered].sort((a, b) => {
@@ -142,9 +199,11 @@ export function getLandingDisplayedCourses(
   query: string,
   showAll = false
 ): Course[] {
+  const baseline = computeCatalogBaselineRating(courses);
   const ranked = filterAndSortCoursesByRating(courses, {
     query,
-    ratingMode: 'most_rated',
+    ratingMode: 'popular',
+    catalogBaselineRating: baseline,
   });
   if (query.trim().length > 0 || showAll) {
     return ranked;

@@ -5,11 +5,17 @@ import type {
   SystemBranding,
 } from '../types/training.ts';
 
+export const DEFAULT_SYSTEM_NAME = 'MiLES';
+export const DEFAULT_SYSTEM_FULL_NAME = 'Mobile Learning Experience System';
+export const DEFAULT_SYSTEM_ICON_URL =
+  '/assets/aistudio/Gemini_Generated_Image_wrxsxwrxsxwrxsxw-removebg-preview_a8a27cfa.png';
+
 export function getDefaultSystemBranding(): SystemBranding {
   return {
-    systemName: 'CertiField',
-    tagline: 'Offline-ready Android field training and verifiable PDF certification.',
-    iconUrl: '/icon.svg',
+    systemName: DEFAULT_SYSTEM_NAME,
+    tagline:
+      'Mobile Learning Experience System — offline-ready Android training and verifiable PDF certification.',
+    iconUrl: DEFAULT_SYSTEM_ICON_URL,
     accentColor: '#1d4ed8',
     appDistributionMode: 'apk_download',
     apkUrl: '',
@@ -21,7 +27,7 @@ export function getDefaultSystemBranding(): SystemBranding {
 }
 
 export function getDefaultCertificateDesign(
-  issuerName = 'CertiField Academy',
+  issuerName = 'MiLES Academy',
   certificateTitle = 'Certified Training Specialist'
 ): CertificateDesign {
   return {

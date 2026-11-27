@@ -12,7 +12,7 @@ const MIPMAP_DENSITIES: Array<{ folder: string; size: number }> = [
 ];
 
 export function escapeAndroidXmlString(value: string): string {
-  const cleaned = value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim() || 'CertiField';
+  const cleaned = value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim() || 'MiLES';
   return cleaned
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -40,7 +40,16 @@ async function resolveIconSourceBuffer(
   rootDir: string
 ): Promise<{ buffer: Buffer; ext: string } | null> {
   const trimmed = (iconUrl || '').trim();
-  const fallbackPng = path.resolve(rootDir, 'public', 'pwa-512x512.png');
+  const defaultMilesPng = path.resolve(
+    rootDir,
+    'public',
+    'assets',
+    'aistudio',
+    'Gemini_Generated_Image_wrxsxwrxsxwrxsxw-removebg-preview_a8a27cfa.png'
+  );
+  const fallbackPng = fs.existsSync(defaultMilesPng)
+    ? defaultMilesPng
+    : path.resolve(rootDir, 'public', 'pwa-512x512.png');
 
   if (!trimmed || trimmed === '/icon.svg') {
     if (fs.existsSync(fallbackPng)) {

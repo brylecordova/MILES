@@ -8,7 +8,7 @@ import {
 
 test('escapeAndroidXmlString escapes XML special characters and Android apostrophes', () => {
   assert.equal(escapeAndroidXmlString("CertiField & Co's <Lab>"), "CertiField &amp; Co\\'s &lt;Lab&gt;");
-  assert.equal(escapeAndroidXmlString('   '), 'CertiField');
+  assert.equal(escapeAndroidXmlString('   '), 'MiLES');
 });
 
 test('buildAndroidStringsXml outputs valid Android strings resource', () => {

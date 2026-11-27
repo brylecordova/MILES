@@ -268,55 +268,72 @@ fun CertiFieldApp() {
                 accentColor = brandAccent,
             )
 
-            if (activePlayerPkg != null) {
-                val pkg = activePlayerPkg!!
-                CoursePlayerScreen(
-                    pkg = pkg,
-                    serverUrl = serverUrl,
-                    initialProgress = progressMap[pkg.courseId] ?: CourseProgressState(courseId = pkg.courseId),
-                    isConnected = isConnected,
-                    isDarkMode = isDarkMode,
-                    onToggleDarkMode = {
-                        isDarkMode = !isDarkMode
-                        store.saveDarkMode(isDarkMode)
-                    },
-                    brandAccent = brandAccent,
-                    user = user,
-                    onProgressChange = { next ->
-                        store.saveProgress(next)
-                        refreshLocal()
-                    },
-                    onSubmitOnline = { score, passed, readingSecs, qRes, quizRes ->
-                        api.submitCourse(
-                            courseId = pkg.course._id,
-                            courseTitle = pkg.course.title,
-                            certificateTitle = pkg.course.certificateTitle,
-                            issuerName = pkg.course.issuerName,
-                            overallScore = score,
-                            passed = passed,
-                            completedOfflineAt = null,
-                            readingDurationSeconds = readingSecs,
-                            questionResults = qRes,
-                            quizResults = quizRes,
-                        )
-                        refreshRemote()
-                        activePlayerPkg = null
-                        activeTab = LearnerTab.FINISHED
-                    },
-                    onSavePendingOffline = { item ->
-                        store.savePendingSubmission(item)
-                        refreshLocal()
-                        activePlayerPkg = null
-                        activeTab = LearnerTab.FINISHED
-                    },
-                    onRequireAuth = { showAuthDialog = true },
-                    onExit = {
-                        activePlayerPkg = null
-                        refreshLocal()
-                    },
-                )
-                return@Box
-            }
+            AnimatedContent(
+                targetState = activePlayerPkg,
+                contentKey = { it?.courseId ?: "__home__" },
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    if (targetState != null) {
+                        (slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { it / 6 } +
+                            fadeIn(tween(240))) togetherWith
+                            (slideOutHorizontally(tween(220, easing = FastOutSlowInEasing)) { -it / 8 } +
+                                fadeOut(tween(180)))
+                    } else {
+                        (slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { -it / 6 } +
+                            fadeIn(tween(240))) togetherWith
+                            (slideOutHorizontally(tween(220, easing = FastOutSlowInEasing)) { it / 8 } +
+                                fadeOut(tween(180)))
+                    }
+                },
+                label = "root_screen_transition",
+            ) { playerPkg ->
+                if (playerPkg != null) {
+                    CoursePlayerScreen(
+                        pkg = playerPkg,
+                        serverUrl = serverUrl,
+                        initialProgress = progressMap[playerPkg.courseId] ?: CourseProgressState(courseId = playerPkg.courseId),
+                        isConnected = isConnected,
+                        isDarkMode = isDarkMode,
+                        onToggleDarkMode = {
+                            isDarkMode = !isDarkMode
+                            store.saveDarkMode(isDarkMode)
+                        },
+                        brandAccent = brandAccent,
+                        user = user,
+                        onProgressChange = { next ->
+                            store.saveProgress(next)
+                            refreshLocal()
+                        },
+                        onSubmitOnline = { score, passed, readingSecs, qRes, quizRes ->
+                            api.submitCourse(
+                                courseId = playerPkg.course._id,
+                                courseTitle = playerPkg.course.title,
+                                certificateTitle = playerPkg.course.certificateTitle,
+                                issuerName = playerPkg.course.issuerName,
+                                overallScore = score,
+                                passed = passed,
+                                completedOfflineAt = null,
+                                readingDurationSeconds = readingSecs,
+                                questionResults = qRes,
+                                quizResults = quizRes,
+                            )
+                            refreshRemote()
+                            activePlayerPkg = null
+                            activeTab = LearnerTab.FINISHED
+                        },
+                        onSavePendingOffline = { item ->
+                            store.savePendingSubmission(item)
+                            refreshLocal()
+                            activePlayerPkg = null
+                            activeTab = LearnerTab.FINISHED
+                        },
+                        onRequireAuth = { showAuthDialog = true },
+                        onExit = {
+                            activePlayerPkg = null
+                            refreshLocal()
+                        },
+                    )
+                } else {
 
             Scaffold(
                 containerColor = Color.Transparent,
@@ -347,7 +364,7 @@ fun CertiFieldApp() {
                                         brandAccent = brandAccent,
                                     )
                                     Text(
-                                        text = branding.systemName.ifBlank { "CertiField" },
+                                        text = branding.systemName.ifBlank { "MiLES" },
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         maxLines = 1,
@@ -624,10 +641,14 @@ fun CertiFieldApp() {
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                         transitionSpec = {
                             val forward = targetState.ordinal >= initialState.ordinal
-                            val enter = slideInHorizontally(animationSpec = tween(220)) { width ->
+                            val enter = slideInHorizontally(
+                                animationSpec = tween(240, easing = FastOutSlowInEasing),
+                            ) { width ->
                                 if (forward) width / 8 else -width / 8
                             } + fadeIn(animationSpec = tween(220))
-                            val exit = slideOutHorizontally(animationSpec = tween(180)) { width ->
+                            val exit = slideOutHorizontally(
+                                animationSpec = tween(200, easing = FastOutSlowInEasing),
+                            ) { width ->
                                 if (forward) -width / 10 else width / 10
                             } + fadeOut(animationSpec = tween(160))
                             enter togetherWith exit
@@ -771,7 +792,8 @@ fun CertiFieldApp() {
                             brandAccent = brandAccent,
                         )
                     }
-                    }
+                }
+            }
                 }
             }
         }
@@ -1000,7 +1022,7 @@ private fun BrandLogoBadge(
                 "${ApiClient.normalizeConnectionUrl(serverUrl)}$iconUrl"
             }
         }
-        isConnected && iconUrl == "/icon.svg" -> "${ApiClient.normalizeConnectionUrl(serverUrl)}/pwa-192x192.png"
+        isConnected && iconUrl == "/icon.svg" -> "${ApiClient.normalizeConnectionUrl(serverUrl)}/assets/aistudio/Gemini_Generated_Image_wrxsxwrxsxwrxsxw-removebg-preview_a8a27cfa.png"
         else -> null
     }
 
@@ -2370,20 +2392,37 @@ private fun CoursePlayerScreen(
             }
         },
     ) { padding ->
-        if (showSummary) {
-            val orderedResults = pkg.course.modules
-                .filter { it.kind == "quiz" }
-                .flatMap { it.questions }
-                .mapNotNull { progress.latestQuestionResults[it.id] }
-            val quizList = progress.quizResults.values.toList()
-            val correctCount = orderedResults.count { it.isCorrect }
-            val score = if (orderedResults.isEmpty()) 100 else (correctCount * 100) / orderedResults.size
-            val passed = quizList.all { it.passed }
+        val playerPageKey = if (showSummary) -1 else progress.currentModuleIndex
+        AnimatedContent(
+            targetState = playerPageKey,
+            modifier = Modifier.fillMaxSize().padding(padding),
+            transitionSpec = {
+                val targetOrder = if (targetState == -1) Int.MAX_VALUE else targetState
+                val initialOrder = if (initialState == -1) Int.MAX_VALUE else initialState
+                val forward = targetOrder >= initialOrder
+                (slideInHorizontally(tween(240, easing = FastOutSlowInEasing)) { width ->
+                    if (forward) width / 8 else -width / 8
+                } + fadeIn(tween(220))) togetherWith
+                    (slideOutHorizontally(tween(200, easing = FastOutSlowInEasing)) { width ->
+                        if (forward) -width / 10 else width / 10
+                    } + fadeOut(tween(160)))
+            },
+            label = "course_player_module_transition",
+        ) { targetIdx ->
+            if (targetIdx == -1) {
+                val orderedResults = pkg.course.modules
+                    .filter { it.kind == "quiz" }
+                    .flatMap { it.questions }
+                    .mapNotNull { progress.latestQuestionResults[it.id] }
+                val quizList = progress.quizResults.values.toList()
+                val correctCount = orderedResults.count { it.isCorrect }
+                val score = if (orderedResults.isEmpty()) 100 else (correctCount * 100) / orderedResults.size
+                val passed = quizList.all { it.passed }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                 item {
                     Text(
                         "Overall Accuracy: $score%",
@@ -2475,21 +2514,18 @@ private fun CoursePlayerScreen(
                         ) { Text("Submit Course to Admin") }
                     }
                 }
-            }
-            return@Scaffold
-        }
+            } else {
+                val currentMod = pkg.course.modules.getOrNull(targetIdx)
+                if (currentMod != null) {
+                    val normalizedBase = ApiClient.normalizeConnectionUrl(serverUrl)
 
-        if (mod == null) return@Scaffold
-
-        val normalizedBase = ApiClient.normalizeConnectionUrl(serverUrl)
-
-        LazyColumn(
-            state = lessonListState,
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            if (mod.kind == "lesson") {
-                items(mod.blocks, key = { it.id }) { blk ->
+                    LazyColumn(
+                        state = lessonListState,
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+            if (currentMod.kind == "lesson") {
+                items(currentMod.blocks, key = { it.id }) { blk ->
                     when (blk.type) {
                         "header" -> Text(
                             blk.text.orEmpty(),
@@ -2533,7 +2569,7 @@ private fun CoursePlayerScreen(
                 item {
                     Button(
                         onClick = {
-                            val completed = (progress.completedModuleIds + mod.id).distinct()
+                            val completed = (progress.completedModuleIds + currentMod.id).distinct()
                             val isLast = progress.currentModuleIndex >= pkg.course.modules.lastIndex
                             val next = progress.copy(
                                 completedModuleIds = completed,
@@ -2553,7 +2589,7 @@ private fun CoursePlayerScreen(
             } else {
                 item {
                     Text(
-                        "PASSING SCORE: ${mod.passingScore ?: 70}%",
+                        "PASSING SCORE: ${currentMod.passingScore ?: 70}%",
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         color = brandAccent,
@@ -2609,7 +2645,7 @@ private fun CoursePlayerScreen(
                         }
                     }
                 } else {
-                    items(mod.questions, key = { it.id }) { q ->
+                    items(currentMod.questions, key = { it.id }) { q ->
                         Card(
                             colors = CardDefaults.cardColors(containerColor = cardBg),
                             border = BorderStroke(1.dp, borderColor),
@@ -2664,19 +2700,19 @@ private fun CoursePlayerScreen(
                     item {
                         Button(
                             onClick = {
-                                val res = QuizEngine.evaluateQuiz(mod, answers, progress.questionTries)
-                                val nextQuizAttempts = progress.quizAttempts + (mod.id to ((progress.quizAttempts[mod.id] ?: 0) + 1))
+                                val res = QuizEngine.evaluateQuiz(currentMod, answers, progress.questionTries)
+                                val nextQuizAttempts = progress.quizAttempts + (currentMod.id to ((progress.quizAttempts[currentMod.id] ?: 0) + 1))
                                 val nextResultsMap = progress.latestQuestionResults.toMutableMap()
                                 res.records.forEach { nextResultsMap[it.questionId] = it }
-                                val nextQuizResults = progress.quizResults + (mod.id to QuizAttemptSummary(
-                                    quizId = mod.id,
-                                    quizTitle = mod.title,
+                                val nextQuizResults = progress.quizResults + (currentMod.id to QuizAttemptSummary(
+                                    quizId = currentMod.id,
+                                    quizTitle = currentMod.title,
                                     score = res.score,
-                                    passingScore = mod.passingScore ?: 70,
+                                    passingScore = currentMod.passingScore ?: 70,
                                     passed = res.passed,
-                                    attempts = nextQuizAttempts[mod.id] ?: 1,
+                                    attempts = nextQuizAttempts[currentMod.id] ?: 1,
                                 ))
-                                val nextCompleted = if (res.passed) (progress.completedModuleIds + mod.id).distinct() else progress.completedModuleIds
+                                val nextCompleted = if (res.passed) (progress.completedModuleIds + currentMod.id).distinct() else progress.completedModuleIds
                                 val next = progress.copy(
                                     completedModuleIds = nextCompleted,
                                     questionTries = res.updatedTries,
@@ -2691,15 +2727,18 @@ private fun CoursePlayerScreen(
                                 restartTargetIdx = QuizEngine.getRestartTargetIndex(
                                     pkg.course.modules,
                                     progress.currentModuleIndex,
-                                    mod.failureRule,
+                                    currentMod.failureRule,
                                 )
-                                feedbackBanner = res.passed to (if (res.passed) "Quiz Passed (${res.score}%)" else "Scored ${res.score}% (below ${mod.passingScore ?: 70}%)")
+                                feedbackBanner = res.passed to (if (res.passed) "Quiz Passed (${res.score}%)" else "Scored ${res.score}% (below ${currentMod.passingScore ?: 70}%)")
                             },
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
                             modifier = Modifier.fillMaxWidth().height(48.dp),
                         ) { Text("Submit Quiz Answers") }
                     }
+                }
+            }
+        }
                 }
             }
         }

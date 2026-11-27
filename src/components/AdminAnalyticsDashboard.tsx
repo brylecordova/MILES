@@ -20,7 +20,6 @@ interface AdminAnalyticsDashboardProps {
   report: AdminAnalyticsReport | null;
   loading: boolean;
   onRefresh: () => void;
-  onOpenSubmissions: () => void;
 }
 
 type CourseSortField =
@@ -34,7 +33,6 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
   report,
   loading,
   onRefresh,
-  onOpenSubmissions,
 }) => {
   const [courseSort, setCourseSort] = useState<CourseSortField>('downloadCount');
   const [learnerQuery, setLearnerQuery] = useState('');
@@ -196,18 +194,6 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
-          {overview.pendingReviews > 0 && (
-            <button
-              type="button"
-              onClick={onOpenSubmissions}
-              className="flex min-h-[40px] items-center gap-2 whitespace-nowrap rounded-xl border border-amber-300 bg-amber-100/90 px-3.5 text-xs font-bold text-amber-950 hover:bg-amber-200 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-100 dark:hover:bg-amber-900/70"
-            >
-              <Clock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
-              <span>
-                {overview.pendingReviews} Pending Certificate{overview.pendingReviews === 1 ? '' : 's'}
-              </span>
-            </button>
-          )}
           <button
             type="button"
             onClick={onRefresh}

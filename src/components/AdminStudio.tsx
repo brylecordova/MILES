@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
   AlertCircle,
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   Award,
   BarChart3,
   BookOpen,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   Clock,
   Download,
@@ -15,9 +18,9 @@ import {
   ImageIcon,
   Lock,
   Palette,
+  Pencil,
   Plus,
   Save,
-  Smartphone,
   Trash2,
   Upload,
   X,
@@ -26,6 +29,7 @@ import {
 import type {
   AdminAnalyticsReport,
   AppDistributionMode,
+  CertificateRecord,
   Course,
   CourseModule,
   CourseSubmission,
@@ -49,9 +53,14 @@ import {
   ADMIN_NAV_CLUSTERS,
   type AdminTabId,
 } from '../utils/adminNav';
-import { getDefaultCertificateDesign } from '../utils/certificateDefaults';
+import {
+  DEFAULT_SYSTEM_ICON_URL,
+  getDefaultCertificateDesign,
+} from '../utils/certificateDefaults';
 import { AdminAnalyticsDashboard } from './AdminAnalyticsDashboard';
+import { AndroidIcon } from './AndroidIcon';
 import { CertificateDesigner } from './CertificateDesigner';
+import { CertificateModal } from './CertificateModal';
 import { CourseBannerImage } from './MediaRenderer';
 
 const PRESET_BANNERS = [
@@ -69,7 +78,7 @@ const PRESET_BANNERS = [
   },
 ];
 
-function createEmptyCourse(defaultIssuer = 'CertiField Academy'): Omit<Course, '_id' | 'createdAt' | 'updatedAt'> {
+function createEmptyCourse(defaultIssuer = 'MiLES Academy'): Omit<Course, '_id' | 'createdAt' | 'updatedAt'> {
   return {
     title: '',
     description: '',
@@ -134,14 +143,21 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     configuredViaEnv: boolean;
     hasClaimedPasscode: boolean;
     databaseMode: string;
+    adminName?: string;
   } | null>(null);
   const [passcode, setPasscode] = useState('');
+  const [adminName, setAdminName] = useState('');
+  const [adminNameInput, setAdminNameInput] = useState('');
+  const [adminNameDraft, setAdminNameDraft] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
   const [adminTab, setAdminTab] = useState<AdminTabId>('analytics');
   const [courses, setCourses] = useState<Course[]>([]);
   const [submissions, setSubmissions] = useState<CourseSubmission[]>([]);
+  const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
+  const [viewingCertificate, setViewingCertificate] = useState<CertificateRecord | null>(null);
+  const [loadingCertSubId, setLoadingCertSubId] = useState<string | null>(null);
   const [analyticsReport, setAnalyticsReport] = useState<AdminAnalyticsReport | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [subFilter, setSubFilter] = useState<'all' | 'pending_review' | 'approved' | 'rejected'>('all');
@@ -209,7 +225,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   useEffect(() => {
     api
       .getAdminAuthStatus()
-      .then((status) => setAuthStatus(status))
+      .then((status) => {
+        setAuthStatus(status);
+        if (status.adminName) {
+          setAdminName(status.adminName);
+          setAdminNameInput((prev) => prev || status.adminName || '');
+          setAdminNameDraft((prev) => prev || status.adminName || '');
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -222,14 +245,21 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
   async function refreshAdminData() {
     setAnalyticsLoading(true);
     try {
-      const [cRes, sRes, aRes] = await Promise.all([
+      const [cRes, sRes, aRes, pRes, certRes] = await Promise.all([
         api.listCourses(true),
         api.listAllSubmissions(),
         api.getAdminAnalytics(),
+        api.getAdminProfile().catch(() => ({ adminName: '' })),
+        api.listAdminCertificates().catch(() => ({ certificates: [] as CertificateRecord[] })),
       ]);
       setCourses(cRes.courses);
       setSubmissions(sRes.submissions);
       setAnalyticsReport(aRes.report);
+      setCertificates(certRes.certificates);
+      if (pRes.adminName) {
+        setAdminName(pRes.adminName);
+        setAdminNameDraft(pRes.adminName);
+      }
     } catch {
       // Token may have expired
     } finally {
@@ -244,10 +274,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     try {
       const isFirstRun =
         authStatus && !authStatus.configuredViaEnv && !authStatus.hasClaimedPasscode;
+      const trimmedName = adminNameInput.trim();
       const res = isFirstRun
-        ? await api.claimAdminPasscode(passcode)
-        : await api.loginAdmin(passcode);
+        ? await api.claimAdminPasscode(passcode, trimmedName)
+        : await api.loginAdmin(passcode, trimmedName || undefined);
       setAdminToken(res.token);
+      const resolvedName = res.adminName?.trim() || trimmedName || '';
+      setAdminName(resolvedName);
+      setAdminNameDraft(resolvedName);
       setAuthed(true);
       setPasscode('');
     } catch (err) {
@@ -385,6 +419,12 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     try {
       const res = await api.updateSystemBranding(brandingDraft);
       onBrandingUpdated(res.branding);
+      const trimmedAdminName = adminNameDraft.trim();
+      if (trimmedAdminName && trimmedAdminName !== adminName) {
+        const profileRes = await api.updateAdminProfile(trimmedAdminName);
+        setAdminName(profileRes.adminName);
+        setAdminNameDraft(profileRes.adminName);
+      }
       const successMsg =
         'System branding saved. Android app resources (app_name & launcher icons) and live Android clients are now synced.';
       setBrandingSuccess(successMsg);
@@ -418,7 +458,14 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
         prev.map((s) => (s._id === res.submission._id ? res.submission : s))
       );
       if (decision === 'approved') {
-        const certCode = res.certificate?.certificateCode;
+        const issuedCert = res.certificate;
+        if (issuedCert) {
+          setCertificates((prev) => [
+            issuedCert,
+            ...prev.filter((c) => c._id !== issuedCert._id),
+          ]);
+        }
+        const certCode = issuedCert?.certificateCode;
         const msg = certCode
           ? `Approved ${res.submission.userName}'s assessment and issued official certificate ${certCode}.`
           : `Approved ${res.submission.userName}'s assessment and confirmed certificate eligibility.`;
@@ -459,6 +506,36 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
       });
     } finally {
       setReviewLoading(false);
+    }
+  }
+
+  async function handleViewSubmissionCertificate(sub: CourseSubmission) {
+    const cached = certificates.find(
+      (c) => (sub.certificateId && c._id === sub.certificateId) || c.submissionId === sub._id
+    );
+    if (cached) {
+      setViewingCertificate(cached);
+      return;
+    }
+    setLoadingCertSubId(sub._id);
+    try {
+      const res = await api.getSubmissionCertificate(sub._id);
+      setCertificates((prev) => [
+        res.certificate,
+        ...prev.filter((c) => c._id !== res.certificate._id),
+      ]);
+      setViewingCertificate(res.certificate);
+    } catch (err) {
+      setAdminNotice({
+        type: 'error',
+        title: 'Certificate Unavailable',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Unable to load the issued certificate for this submission.',
+      });
+    } finally {
+      setLoadingCertSubId(null);
     }
   }
 
@@ -666,6 +743,24 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
         <form onSubmit={handleAdminAuthSubmit} className="mt-5 space-y-4">
           <div>
             <label
+              htmlFor="admin-full-name"
+              className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
+            >
+              {isFirstRun ? 'Admin Full Name' : 'Admin Full Name (optional update)'}
+            </label>
+            <input
+              id="admin-full-name"
+              type="text"
+              required={Boolean(isFirstRun)}
+              value={adminNameInput}
+              onChange={(e) => setAdminNameInput(e.target.value)}
+              placeholder="e.g. Elena Rostova"
+              className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-700/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400"
+            />
+          </div>
+
+          <div>
+            <label
               htmlFor="admin-passcode"
               className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
             >
@@ -731,7 +826,19 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     }
   }
 
+  const activePanelKey =
+    adminTab === 'courses'
+      ? draft
+        ? 'courses-editor'
+        : 'courses-list'
+      : adminTab === 'submissions'
+      ? selectedSub
+        ? `submissions-detail-${selectedSub._id}`
+        : 'submissions-list'
+      : adminTab;
+
   return (
+    <MotionConfig reducedMotion="user">
     <div className="grid gap-6 pb-16 lg:grid-cols-[276px_1fr]">
       {/* Admin Left Sidebar — Clustered Functional Navigation */}
       <aside className={`p-4 lg:sticky lg:top-20 lg:self-start ${cardCls}`}>
@@ -739,8 +846,11 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
           <p className="text-xs font-bold text-slate-900 dark:text-white">
             {systemBranding.systemName}
           </p>
-          <p className="font-mono-tabular mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-            /systemadministrator
+          <p
+            data-testid="admin-sidebar-name"
+            className="mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-slate-400"
+          >
+            {adminName || 'System Administrator'}
           </p>
         </div>
 
@@ -762,7 +872,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       ? BookOpen
                       : item.id === 'branding'
                       ? Palette
-                      : Smartphone;
+                      : AndroidIcon;
 
                   return (
                     <button
@@ -899,23 +1009,28 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 setSelectedSub(null);
                 setSubFilter('pending_review');
               }}
-              className="min-h-[40px] shrink-0 whitespace-nowrap rounded-xl bg-amber-500 px-4 text-xs font-bold text-slate-950 hover:bg-amber-400"
+              className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-amber-500 px-4 text-xs font-bold text-slate-950 hover:bg-amber-400"
             >
-              Review Pending ({pendingCount})
+              <ClipboardCheck className="h-4 w-4 shrink-0" />
+              <span>Review Pending ({pendingCount})</span>
             </button>
           </section>
         )}
 
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={activePanelKey}
+            data-testid="admin-tab-panel"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          >
         {adminTab === 'analytics' && (
           <AdminAnalyticsDashboard
             report={analyticsReport}
             loading={analyticsLoading}
             onRefresh={refreshAdminData}
-            onOpenSubmissions={() => {
-              setAdminTab('submissions');
-              setSelectedSub(null);
-              setSubFilter(pendingCount > 0 ? 'pending_review' : 'all');
-            }}
           />
         )}
 
@@ -952,7 +1067,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 return (
                   <article
                     key={course._id}
-                    className={`grid gap-4 p-5 md:grid-cols-[136px_1fr_auto] md:items-center ${cardCls}`}
+                    className={`grid gap-4 p-5 md:grid-cols-[136px_1fr] md:items-center ${cardCls}`}
                   >
                     <CourseBannerImage
                       url={course.bannerUrl}
@@ -961,16 +1076,77 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                     />
 
                     <div className="min-w-0 space-y-3">
-                      <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                        {course.title}
-                      </h2>
-                      <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50/90 p-3 text-xs sm:grid-cols-4 dark:bg-slate-950/60">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 className="min-w-0 text-base font-bold text-slate-900 dark:text-white">
+                          {course.title}
+                        </h2>
+
+                        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cloned = JSON.parse(JSON.stringify(course)) as Course;
+                              if (!cloned.certificateDesign) {
+                                cloned.certificateDesign = getDefaultCertificateDesign(
+                                  cloned.issuerName,
+                                  cloned.certificateTitle
+                                );
+                              }
+                              setEditingCourseId(course._id);
+                              setDraft(cloned);
+                              setEditorError(null);
+                              setEditorSuccess(null);
+                              setConfirmDeleteCourseId(null);
+                            }}
+                            aria-label={`Edit ${course.title}`}
+                            className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
+                          >
+                            <Pencil className="h-3.5 w-3.5 shrink-0" />
+                            <span>Edit</span>
+                          </button>
+                          {confirmDeleteCourseId === course._id ? (
+                            <div className="flex items-center gap-1 rounded-lg border border-red-300 bg-red-50 px-2 py-0.5 dark:border-red-800 dark:bg-red-950/60">
+                              <span className="text-[11px] font-semibold text-red-800 dark:text-red-200">
+                                Delete?
+                              </span>
+                              <button
+                                type="button"
+                                disabled={deletingCourseId === course._id}
+                                onClick={() => handleDeleteCourse(course)}
+                                className="h-7 rounded-md bg-red-600 px-2 text-[11px] font-bold text-white hover:bg-red-700 disabled:opacity-60"
+                              >
+                                {deletingCourseId === course._id ? 'Deleting...' : 'Confirm'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={deletingCourseId === course._id}
+                                onClick={() => setConfirmDeleteCourseId(null)}
+                                className="h-7 rounded-md px-1.5 text-[11px] font-semibold text-slate-700 hover:bg-white/70 dark:text-slate-200 dark:hover:bg-slate-800"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteCourseId(course._id)}
+                              aria-label={`Delete ${course.title}`}
+                              className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-red-950/60 dark:hover:text-red-300"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                              <span>Delete</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50/90 p-3 text-xs sm:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1.4fr)] sm:gap-5 dark:bg-slate-950/60">
                         <div>
                           <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                             Status
                           </p>
                           <p
-                            className={`mt-0.5 font-semibold ${
+                            className={`mt-0.5 whitespace-nowrap font-semibold ${
                               course.published
                                 ? 'text-emerald-700 dark:text-emerald-400'
                                 : 'text-amber-700 dark:text-amber-400'
@@ -991,7 +1167,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                           <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                             Curriculum
                           </p>
-                          <p className="font-mono-tabular mt-0.5 font-semibold text-slate-800 dark:text-slate-200">
+                          <p className="font-mono-tabular mt-0.5 whitespace-nowrap font-semibold text-slate-800 dark:text-slate-200">
                             {lessons} {lessons === 1 ? 'lesson' : 'lessons'}, {quizzes}{' '}
                             {quizzes === 1 ? 'quiz' : 'quizzes'}
                           </p>
@@ -1005,64 +1181,6 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                           </p>
                         </div>
                       </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 md:flex-col md:items-stretch">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const cloned = JSON.parse(JSON.stringify(course)) as Course;
-                          if (!cloned.certificateDesign) {
-                            cloned.certificateDesign = getDefaultCertificateDesign(
-                              cloned.issuerName,
-                              cloned.certificateTitle
-                            );
-                          }
-                          setEditingCourseId(course._id);
-                          setDraft(cloned);
-                          setEditorError(null);
-                          setEditorSuccess(null);
-                          setConfirmDeleteCourseId(null);
-                        }}
-                        className="min-h-[40px] flex-1 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-800 hover:bg-slate-50 md:flex-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
-                      >
-                        Edit Curriculum &amp; Certificate
-                      </button>
-                      {confirmDeleteCourseId === course._id ? (
-                        <div className="flex items-center justify-between gap-1.5 rounded-xl border border-red-300 bg-red-50 px-2.5 py-1 dark:border-red-800 dark:bg-red-950/60">
-                          <span className="text-xs font-semibold text-red-800 dark:text-red-200">
-                            Delete?
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              disabled={deletingCourseId === course._id}
-                              onClick={() => handleDeleteCourse(course)}
-                              className="min-h-[32px] rounded-lg bg-red-600 px-2.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-60"
-                            >
-                              {deletingCourseId === course._id ? 'Deleting...' : 'Confirm'}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={deletingCourseId === course._id}
-                              onClick={() => setConfirmDeleteCourseId(null)}
-                              className="min-h-[32px] rounded-lg px-2 text-xs font-semibold text-slate-700 hover:bg-white/70 dark:text-slate-200 dark:hover:bg-slate-800"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteCourseId(course._id)}
-                          aria-label={`Delete ${course.title}`}
-                          className="flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-500 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-red-950/60 dark:hover:text-red-300"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          <span>Delete</span>
-                        </button>
-                      )}
                     </div>
                   </article>
                 );
@@ -1082,9 +1200,10 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 <button
                   type="button"
                   onClick={() => setDraft(null)}
-                  className="min-h-[40px] shrink-0 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+                  className="inline-flex min-h-[40px] shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
-                  Back to Course List
+                  <ArrowLeft className="h-4 w-4 shrink-0" />
+                  <span>Back to Course List</span>
                 </button>
                 <span className="hidden truncate text-xs font-semibold text-slate-500 sm:inline dark:text-slate-400">
                   {editingCourseId
@@ -1936,7 +2055,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
         {/* SUBMISSIONS & REVIEW QUEUE */}
         {adminTab === 'submissions' && !selectedSub && (
           <div className="space-y-5">
-            <div className="flex flex-col justify-between gap-3 xl:flex-row xl:items-center">
+            <div className="space-y-4">
               <div>
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
                   Learner Submissions &amp; Certificate Approvals
@@ -1945,7 +2064,10 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                   Inspect per-question attempt counts, essay responses, and approve or reject pending certificates.
                 </p>
               </div>
-              <div className="inline-flex w-fit flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+              <div
+                data-testid="submissions-status-filter"
+                className="inline-flex w-fit flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800"
+              >
                 {[
                   { id: 'all', label: 'All', count: submissions.length },
                   { id: 'pending_review', label: 'Pending Certificates', count: pendingCount },
@@ -2061,22 +2183,37 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedSub(sub);
-                          setReviewFeedback(sub.adminFeedback ?? '');
-                          setPendingReviewDecision(null);
-                          setReviewResultBanner(null);
-                        }}
-                        className={`min-h-[42px] shrink-0 whitespace-nowrap rounded-xl px-4 text-xs font-bold transition-colors ${
-                          isPending
-                            ? 'bg-amber-500 text-slate-950 hover:bg-amber-400'
-                            : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
-                        }`}
-                      >
-                        {isPending ? 'Review & Issue Certificate' : 'Inspect Review Details'}
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2 lg:flex-col lg:items-stretch">
+                        {isApproved && (
+                          <button
+                            type="button"
+                            disabled={loadingCertSubId === sub._id}
+                            onClick={() => handleViewSubmissionCertificate(sub)}
+                            className="inline-flex min-h-[42px] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-xs font-bold text-emerald-900 transition-colors hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700/70 dark:bg-emerald-950/60 dark:text-emerald-200 dark:hover:bg-emerald-900/60"
+                          >
+                            <Award className="h-4 w-4 shrink-0" />
+                            <span>
+                              {loadingCertSubId === sub._id ? 'Loading...' : 'View Certificate'}
+                            </span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedSub(sub);
+                            setReviewFeedback(sub.adminFeedback ?? '');
+                            setPendingReviewDecision(null);
+                            setReviewResultBanner(null);
+                          }}
+                          className={`min-h-[42px] shrink-0 whitespace-nowrap rounded-xl px-4 text-xs font-bold transition-colors ${
+                            isPending
+                              ? 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+                              : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
+                          }`}
+                        >
+                          {isPending ? 'Review & Issue Certificate' : 'Inspect Review Details'}
+                        </button>
+                      </div>
                     </article>
                   );
                 })}
@@ -2095,9 +2232,10 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 setPendingReviewDecision(null);
                 setReviewResultBanner(null);
               }}
-              className="min-h-[42px] rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="inline-flex min-h-[42px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
-              Back to Submissions List
+              <ArrowLeft className="h-4 w-4 shrink-0" />
+              <span>Back to Submissions List</span>
             </button>
 
             <section className={`p-6 ${cardCls}`}>
@@ -2131,11 +2269,26 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                     </>
                   )}
                 </span>
-                {selectedSub.reviewedAt && (
-                  <span className="text-[11px] opacity-80">
-                    Reviewed {new Date(selectedSub.reviewedAt).toLocaleString()}
-                  </span>
-                )}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {selectedSub.reviewedAt && (
+                    <span className="text-[11px] opacity-80">
+                      Reviewed {new Date(selectedSub.reviewedAt).toLocaleString()}
+                    </span>
+                  )}
+                  {selectedSub.status === 'approved' && (
+                    <button
+                      type="button"
+                      disabled={loadingCertSubId === selectedSub._id}
+                      onClick={() => handleViewSubmissionCertificate(selectedSub)}
+                      className="inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-emerald-400/70 bg-white/90 px-3 text-xs font-bold text-emerald-900 shadow-xs hover:bg-white disabled:opacity-60 dark:border-emerald-700 dark:bg-slate-900 dark:text-emerald-200 dark:hover:bg-slate-800"
+                    >
+                      <Award className="h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        {loadingCertSubId === selectedSub._id ? 'Loading...' : 'View Certificate'}
+                      </span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-4 border-b border-slate-200 pb-5 dark:border-slate-800">
@@ -2421,19 +2574,34 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label htmlFor="system-tagline-input" className={labelCls}>
-                  Landing Page Tagline
-                </label>
-                <input
-                  id="system-tagline-input"
-                  type="text"
-                  value={brandingDraft.tagline}
-                  onChange={(e) =>
-                    setBrandingDraft({ ...brandingDraft, tagline: e.target.value })
-                  }
-                  className={inputCls}
-                />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="admin-name-setting-input" className={labelCls}>
+                    Administrator Full Name (shown in sidebar)
+                  </label>
+                  <input
+                    id="admin-name-setting-input"
+                    type="text"
+                    value={adminNameDraft}
+                    onChange={(e) => setAdminNameDraft(e.target.value)}
+                    placeholder="e.g. Elena Rostova"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="system-tagline-input" className={labelCls}>
+                    Landing Page Tagline
+                  </label>
+                  <input
+                    id="system-tagline-input"
+                    type="text"
+                    value={brandingDraft.tagline}
+                    onChange={(e) =>
+                      setBrandingDraft({ ...brandingDraft, tagline: e.target.value })
+                    }
+                    className={inputCls}
+                  />
+                </div>
               </div>
 
               <div className="grid gap-4 rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 sm:grid-cols-[96px_1fr] sm:items-start dark:border-slate-800 dark:bg-slate-950/50">
@@ -2460,7 +2628,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                       onChange={(e) =>
                         setBrandingDraft({ ...brandingDraft, iconUrl: e.target.value })
                       }
-                      placeholder="/icon.svg"
+                      placeholder={DEFAULT_SYSTEM_ICON_URL}
                       className="min-h-[40px] w-full rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                     />
                   </div>
@@ -2485,7 +2653,10 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                     <button
                       type="button"
                       onClick={() =>
-                        setBrandingDraft((prev) => ({ ...prev, iconUrl: '/icon.svg' }))
+                        setBrandingDraft((prev) => ({
+                          ...prev,
+                          iconUrl: DEFAULT_SYSTEM_ICON_URL,
+                        }))
                       }
                       className="min-h-[38px] rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                     >
@@ -2626,7 +2797,7 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
                 <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/60">
                   <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
                     <div className="flex items-start gap-2.5">
-                      <Smartphone className="mt-0.5 h-4 w-4 shrink-0 text-blue-700 dark:text-sky-400" />
+                      <AndroidIcon className="mt-0.5 h-4 w-4 shrink-0 text-blue-700 dark:text-sky-400" />
                       <div>
                         <p className="text-sm font-bold text-slate-900 dark:text-white">
                           Upload Android Release (.apk)
@@ -2762,7 +2933,22 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
             </section>
           </form>
         )}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
+
+    <CertificateModal
+      certificate={viewingCertificate}
+      isAdmin
+      onClose={() => setViewingCertificate(null)}
+      onUpdated={(updated) => {
+        setViewingCertificate(updated);
+        setCertificates((prev) =>
+          prev.map((c) => (c._id === updated._id ? updated : c))
+        );
+      }}
+    />
+    </MotionConfig>
   );
 };

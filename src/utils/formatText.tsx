@@ -20,7 +20,7 @@ function parseInlineTokens(line: string): React.ReactNode[] {
   return parts.map((part, idx) => {
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       return (
-        <strong key={idx} className="font-semibold text-slate-900">
+        <strong key={idx} className="font-semibold text-slate-900 dark:text-white">
           {part.slice(2, -2)}
         </strong>
       );

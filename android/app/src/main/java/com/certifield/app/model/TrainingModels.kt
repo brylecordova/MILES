@@ -204,9 +204,9 @@ data class PendingOfflineSubmission(
 
 @Serializable
 data class SystemBranding(
-    val systemName: String = "CertiField",
-    val tagline: String = "Offline-ready Android field training and verifiable PDF certification.",
-    val iconUrl: String = "/icon.svg",
+    val systemName: String = "MiLES",
+    val tagline: String = "Mobile Learning Experience System — offline-ready Android training and verifiable PDF certification.",
+    val iconUrl: String = "/assets/aistudio/Gemini_Generated_Image_wrxsxwrxsxwrxsxw-removebg-preview_a8a27cfa.png",
     val accentColor: String = "#1d4ed8",
     val updatedAt: String = "",
 )

@@ -75,19 +75,30 @@ export const api = {
 
   // Admin auth
   getAdminAuthStatus: () =>
-    apiFetch<{ configuredViaEnv: boolean; hasClaimedPasscode: boolean; databaseMode: string }>(
-      '/api/admin/auth/status'
+    apiFetch<{
+      configuredViaEnv: boolean;
+      hasClaimedPasscode: boolean;
+      databaseMode: string;
+      adminName?: string;
+    }>('/api/admin/auth/status'),
+  claimAdminPasscode: (passcode: string, adminName?: string) =>
+    apiFetch<{ token: string; adminName?: string }>('/api/admin/auth/claim', {
+      method: 'POST',
+      body: JSON.stringify({ passcode, adminName }),
+    }),
+  loginAdmin: (passcode: string, adminName?: string) =>
+    apiFetch<{ token: string; adminName?: string }>('/api/admin/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ passcode, adminName }),
+    }),
+  getAdminProfile: () =>
+    apiFetch<{ adminName: string }>('/api/admin/profile', {}, 'admin'),
+  updateAdminProfile: (adminName: string) =>
+    apiFetch<{ adminName: string }>(
+      '/api/admin/profile',
+      { method: 'PUT', body: JSON.stringify({ adminName }) },
+      'admin'
     ),
-  claimAdminPasscode: (passcode: string) =>
-    apiFetch<{ token: string }>('/api/admin/auth/claim', {
-      method: 'POST',
-      body: JSON.stringify({ passcode }),
-    }),
-  loginAdmin: (passcode: string) =>
-    apiFetch<{ token: string }>('/api/admin/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ passcode }),
-    }),
 
   // Courses
   listCourses: (includeDrafts = false) =>
@@ -161,7 +172,20 @@ export const api = {
     ),
   listMyCertificates: () =>
     apiFetch<{ certificates: CertificateRecord[] }>('/api/certificates/mine', {}, 'learner'),
-  emailCertificate: (id: string, recipientEmail: string, pdfBase64: string) =>
+  listAdminCertificates: () =>
+    apiFetch<{ certificates: CertificateRecord[] }>('/api/admin/certificates', {}, 'admin'),
+  getSubmissionCertificate: (submissionId: string) =>
+    apiFetch<{ certificate: CertificateRecord }>(
+      `/api/admin/submissions/${encodeURIComponent(submissionId)}/certificate`,
+      {},
+      'admin'
+    ),
+  emailCertificate: (
+    id: string,
+    recipientEmail: string,
+    pdfBase64: string,
+    authRole: 'learner' | 'admin' = 'learner'
+  ) =>
     apiFetch<{
       deliveredViaSmtp: boolean;
       recipientEmail: string;
@@ -170,7 +194,7 @@ export const api = {
     }>(
       `/api/certificates/${id}/email`,
       { method: 'POST', body: JSON.stringify({ recipientEmail, pdfBase64 }) },
-      'learner'
+      authRole
     ),
 };
 

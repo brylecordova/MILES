@@ -8,8 +8,9 @@ import {
 
 test('getDefaultSystemBranding provides valid defaults', () => {
   const branding = getDefaultSystemBranding();
-  assert.equal(branding.systemName, 'CertiField');
-  assert.ok(branding.iconUrl.startsWith('/'));
+  assert.equal(branding.systemName, 'MiLES');
+  assert.ok(branding.tagline.includes('Mobile Learning Experience System'));
+  assert.ok(branding.iconUrl.startsWith('/assets/aistudio/'));
   assert.match(branding.accentColor, /^#[0-9a-fA-F]{6}$/);
   assert.equal(branding.appDistributionMode, 'apk_download');
 });
