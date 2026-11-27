@@ -793,8 +793,8 @@ fun CertiFieldApp() {
                         )
                     }
                 }
-            }
                 }
+            }
             }
         }
 
@@ -865,6 +865,7 @@ fun CertiFieldApp() {
             )
         }
     }
+}
 }
 
 @Composable
@@ -2513,6 +2514,7 @@ private fun CoursePlayerScreen(
                             modifier = Modifier.fillMaxWidth().height(48.dp),
                         ) { Text("Submit Course to Admin") }
                     }
+                }
                 }
             } else {
                 val currentMod = pkg.course.modules.getOrNull(targetIdx)
