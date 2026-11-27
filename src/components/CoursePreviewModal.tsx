@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
   Award,
   BookOpen,
@@ -48,30 +49,48 @@ export const CoursePreviewModal: React.FC<CoursePreviewModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [course, onClose]);
 
-  if (!course) return null;
-
-  const lessons = course.modules.filter((m): m is LessonModule => m.kind === 'lesson');
-  const quizzes = course.modules.filter((m) => m.kind === 'quiz');
+  const lessons = course
+    ? course.modules.filter((m): m is LessonModule => m.kind === 'lesson')
+    : [];
+  const quizzes = course ? course.modules.filter((m) => m.kind === 'quiz') : [];
   const totalMinutes = lessons.reduce((sum, l) => sum + (l.estimatedMinutes || 0), 0);
   const totalQuestions = quizzes.reduce((sum, q) => sum + q.questions.length, 0);
   const sampleLesson = lessons[0] ?? null;
-  const ratingCount = course.ratingCount ?? 0;
-  const averageRating = course.averageRating ?? 0;
-  const popularityScore = computeCoursePopularityScore(course, catalogBaselineRating);
-  const popularityPercent = computeCoursePopularityPercent(course, catalogBaselineRating);
+  const ratingCount = course?.ratingCount ?? 0;
+  const averageRating = course?.averageRating ?? 0;
+  const popularityScore = course
+    ? computeCoursePopularityScore(course, catalogBaselineRating)
+    : 0;
+  const popularityPercent = course
+    ? computeCoursePopularityPercent(course, catalogBaselineRating)
+    : 0;
   const isPlayStore = branding.appDistributionMode === 'play_store';
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-xs sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="course-preview-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/95 sm:rounded-2xl">
+    <MotionConfig reducedMotion="user">
+      <AnimatePresence>
+        {course && (
+          <motion.div
+            key={course._id}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-xs sm:items-center sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="course-preview-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) onClose();
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 28, scale: 0.94 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.96 }}
+              transition={{ type: 'spring', stiffness: 340, damping: 28, mass: 0.85 }}
+              className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur-xl will-change-transform dark:border-slate-800 dark:bg-slate-900/95 sm:rounded-2xl"
+            >
         {/* Sticky Modal Header */}
         <div className="flex items-start justify-between gap-4 border-b border-slate-200/80 px-6 py-4 dark:border-slate-800">
           <div className="min-w-0">
@@ -415,7 +434,10 @@ export const CoursePreviewModal: React.FC<CoursePreviewModalProps> = ({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </MotionConfig>
   );
 };

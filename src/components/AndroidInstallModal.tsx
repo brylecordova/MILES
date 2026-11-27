@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { Download, ExternalLink, Film, ShieldCheck, X } from 'lucide-react';
 import type { SystemBranding } from '../types/training';
 import { downloadUploadedApk } from '../utils/api';
@@ -18,7 +19,16 @@ export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!open) return null;
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
 
   const mode = branding.appDistributionMode ?? 'apk_download';
   const apkUrl = branding.apkUrl?.trim() || '';
@@ -38,13 +48,30 @@ export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-xs sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="android-install-title"
-    >
-      <div className="w-full max-w-lg rounded-t-3xl border border-slate-200 bg-white/95 p-6 shadow-xl backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/95 sm:rounded-2xl">
+    <MotionConfig reducedMotion="user">
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            key="android-install-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-xs sm:items-center sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="android-install-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) onClose();
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 28, scale: 0.94 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.96 }}
+              transition={{ type: 'spring', stiffness: 340, damping: 28, mass: 0.85 }}
+              className="w-full max-w-lg rounded-t-3xl border border-slate-200 bg-white/95 p-6 shadow-xl backdrop-blur-xl will-change-transform dark:border-slate-800 dark:bg-slate-900/95 sm:rounded-2xl"
+            >
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <img
@@ -175,7 +202,10 @@ export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({
             </div>
           </div>
         </div>
-      </div>
-    </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </MotionConfig>
   );
 };

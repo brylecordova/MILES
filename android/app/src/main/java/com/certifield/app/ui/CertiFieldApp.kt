@@ -7,17 +7,24 @@ import android.net.NetworkCapabilities
 import android.net.Uri
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -39,6 +46,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -51,6 +59,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -2189,6 +2199,21 @@ private fun CertificatesTab(
     onEmailPdf: (CertificateRecord) -> Unit,
     onRequireAuth: () -> Unit,
 ) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredCertificates = remember(certificates, searchQuery) {
+        val q = searchQuery.trim().lowercase()
+        if (q.isEmpty()) {
+            certificates
+        } else {
+            certificates.filter { cert ->
+                cert.certificateTitle.lowercase().contains(q) ||
+                    cert.courseTitle.lowercase().contains(q) ||
+                    cert.issuerName.lowercase().contains(q) ||
+                    cert.certificateCode.lowercase().contains(q)
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         SectionHeaderBlock(
             kicker = "EARNED CREDENTIALS",
@@ -2220,11 +2245,63 @@ private fun CertificatesTab(
             return
         }
 
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Search certificates...") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search certificates",
+                    tint = textSecondary,
+                )
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Clear search",
+                            tint = textSecondary,
+                        )
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+        )
+
+        if (filteredCertificates.isEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = cardBg),
+                border = BorderStroke(1.dp, borderColor),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
+                ) {
+                    Text(
+                        "No certificates match \"$searchQuery\".",
+                        color = textSecondary,
+                        textAlign = TextAlign.Center,
+                    )
+                    TextButton(onClick = { searchQuery = "" }) {
+                        Text("Reset Search", color = brandAccent, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            return
+        }
+
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(bottom = 16.dp),
         ) {
-            items(certificates, key = { it._id }) { cert ->
+            items(filteredCertificates, key = { it._id }) { cert ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = cardBg),
                     border = BorderStroke(1.dp, borderColor),
@@ -3327,221 +3404,326 @@ private fun CoursePreviewDialog(
     val totalMinutes = lessons.sumOf { it.estimatedMinutes ?: 0 }
     val sampleLesson = lessons.firstOrNull()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = dialogBg,
-        shape = RoundedCornerShape(22.dp),
-        title = {
-            Column {
-                Text(
-                    "COURSE PREVIEW",
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = brandAccent,
-                )
-                Text(
-                    course.title,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 420.dp)
-                    .verticalScroll(rememberScrollState()),
+    val visibleState = remember(course._id) { MutableTransitionState(false) }
+    var pendingAction by remember(course._id) { mutableStateOf<(() -> Unit)?>(null) }
+
+    LaunchedEffect(course._id) {
+        visibleState.targetState = true
+    }
+
+    LaunchedEffect(visibleState.currentState, visibleState.isIdle, pendingAction) {
+        if (pendingAction != null && !visibleState.currentState && visibleState.isIdle) {
+            val action = pendingAction
+            pendingAction = null
+            action?.invoke()
+        }
+    }
+
+    fun dismissWithAnimation(afterDismiss: () -> Unit) {
+        if (pendingAction != null) return
+        pendingAction = afterDismiss
+        visibleState.targetState = false
+    }
+
+    val backdropAlpha by animateFloatAsState(
+        targetValue = if (visibleState.targetState) 1f else 0f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "previewBackdropAlpha",
+    )
+
+    Dialog(
+        onDismissRequest = { dismissWithAnimation(onDismiss) },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.62f * backdropAlpha))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { dismissWithAnimation(onDismiss) }
+                .padding(horizontal = 16.dp, vertical = 24.dp),
+        ) {
+            AnimatedVisibility(
+                visibleState = visibleState,
+                enter = fadeIn(animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)) +
+                    scaleIn(
+                        initialScale = 0.94f,
+                        transformOrigin = TransformOrigin.Center,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = 340f,
+                        ),
+                    ) +
+                    slideInVertically(
+                        animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+                    ) { fullHeight -> fullHeight / 16 },
+                exit = fadeOut(animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing)) +
+                    scaleOut(
+                        targetScale = 0.96f,
+                        transformOrigin = TransformOrigin.Center,
+                        animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing),
+                    ) +
+                    slideOutVertically(
+                        animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing),
+                    ) { fullHeight -> fullHeight / 20 },
             ) {
-                if (bannerModel != null) {
-                    AsyncImage(
-                        model = bannerModel,
-                        contentDescription = course.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(140.dp)
-                            .clip(RoundedCornerShape(14.dp)),
-                    )
-                }
-
-                Text(
-                    text = "${course.category} · ${course.issuerName}",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = brandAccent,
-                )
-
-                Text(
-                    text = course.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = textSecondary,
-                )
-
-                CourseRatingRow(
-                    course = course,
-                    isDarkMode = isDarkMode,
-                    textSecondary = textSecondary,
-                )
-
                 Surface(
-                    color = if (isDarkMode) Color(0xFF1E293B).copy(alpha = 0.6f) else Color(0xFFF8FAFC),
-                    border = BorderStroke(1.dp, borderColor),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    color = dialogBg,
+                    tonalElevation = 8.dp,
+                    shadowElevation = 18.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 520.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { /* consume taps inside modal */ },
                 ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.padding(12.dp),
-                    ) {
-                        Text(
-                            text = "${lessons.size} Lessons (${totalMinutes} min) · ${quizzes.size} Quizzes",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = textPrimary,
-                        )
-                        Text(
-                            text = "Certificate: ${course.certificateTitle}",
-                            fontSize = 11.sp,
-                            color = textSecondary,
-                        )
-                    }
-                }
-
-                if (course.modules.isNotEmpty()) {
-                    Text(
-                        text = "Curriculum Syllabus",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = textPrimary,
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        course.modules.forEachIndexed { idx, mod ->
-                            Surface(
-                                color = if (isDarkMode) Color(0xFF0B1222) else Color(0xFFF8FAFC),
-                                border = BorderStroke(1.dp, borderColor),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth(),
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                Text(
+                                    "COURSE PREVIEW",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = brandAccent,
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    course.title,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = textPrimary,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            IconButton(
+                                onClick = { dismissWithAnimation(onDismiss) },
+                                modifier = Modifier.size(36.dp),
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                ) {
-                                    Text(
-                                        text = "${idx + 1}.",
-                                        fontSize = 11.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold,
-                                        color = brandAccent,
-                                    )
-                                    Column(Modifier.weight(1f)) {
-                                        Text(
-                                            text = mod.title,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = textPrimary,
-                                        )
-                                        Text(
-                                            text = if (mod.kind == "lesson") {
-                                                "Lesson · ${mod.estimatedMinutes ?: 5} min"
-                                            } else {
-                                                "Assessment · ${mod.questions.size} questions · Pass ${mod.passingScore ?: 70}%"
-                                            },
-                                            fontSize = 10.5.sp,
-                                            color = textSecondary,
-                                        )
-                                    }
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close preview",
+                                    tint = textSecondary,
+                                )
                             }
                         }
-                    }
-                }
 
-                if (sampleLesson != null && sampleLesson.blocks.isNotEmpty()) {
-                    Surface(
-                        color = if (isDarkMode) Color(0xFF0B1222) else Color(0xFFF1F5F9),
-                        border = BorderStroke(1.dp, borderColor),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
+                        Spacer(Modifier.height(12.dp))
+
                         Column(
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 420.dp)
+                                .verticalScroll(rememberScrollState()),
                         ) {
+                            if (bannerModel != null) {
+                                AsyncImage(
+                                    model = bannerModel,
+                                    contentDescription = course.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(140.dp)
+                                        .clip(RoundedCornerShape(14.dp)),
+                                )
+                            }
+
                             Text(
-                                text = "LESSON 1 SAMPLE",
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
+                                text = "${course.category} · ${course.issuerName}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
                                 color = brandAccent,
                             )
+
                             Text(
-                                text = sampleLesson.title,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = textPrimary,
+                                text = course.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = textSecondary,
                             )
-                            sampleLesson.blocks.take(4).forEach { blk ->
-                                when (blk.type) {
-                                    "header" -> Text(
-                                        text = blk.text.orEmpty(),
+
+                            CourseRatingRow(
+                                course = course,
+                                isDarkMode = isDarkMode,
+                                textSecondary = textSecondary,
+                            )
+
+                            Surface(
+                                color = if (isDarkMode) Color(0xFF1E293B).copy(alpha = 0.6f) else Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, borderColor),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.padding(12.dp),
+                                ) {
+                                    Text(
+                                        text = "${lessons.size} Lessons (${totalMinutes} min) · ${quizzes.size} Quizzes",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = textPrimary,
                                     )
-                                    "body" -> Text(
-                                        text = blk.text.orEmpty(),
-                                        fontSize = 11.5.sp,
+                                    Text(
+                                        text = "Certificate: ${course.certificateTitle}",
+                                        fontSize = 11.sp,
                                         color = textSecondary,
-                                        maxLines = 4,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    "bullets" -> blk.items.take(3).forEach { bullet ->
-                                        Text(
-                                            text = "• $bullet",
-                                            fontSize = 11.5.sp,
-                                            color = textSecondary,
-                                        )
-                                    }
-                                    "video" -> Text(
-                                        text = "Includes offline video: ${blk.caption ?: "Training briefing"}",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = brandAccent,
-                                    )
-                                    "image" -> Text(
-                                        text = "Includes diagram: ${blk.caption ?: "Lesson illustration"}",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = brandAccent,
                                     )
                                 }
+                            }
+
+                            if (course.modules.isNotEmpty()) {
+                                Text(
+                                    text = "Curriculum Syllabus",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = textPrimary,
+                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    course.modules.forEachIndexed { idx, mod ->
+                                        Surface(
+                                            color = if (isDarkMode) Color(0xFF0B1222) else Color(0xFFF8FAFC),
+                                            border = BorderStroke(1.dp, borderColor),
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                            ) {
+                                                Text(
+                                                    text = "${idx + 1}.",
+                                                    fontSize = 11.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = brandAccent,
+                                                )
+                                                Column(Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = mod.title,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = textPrimary,
+                                                    )
+                                                    Text(
+                                                        text = if (mod.kind == "lesson") {
+                                                            "Lesson · ${mod.estimatedMinutes ?: 5} min"
+                                                        } else {
+                                                            "Assessment · ${mod.questions.size} questions · Pass ${mod.passingScore ?: 70}%"
+                                                        },
+                                                        fontSize = 10.5.sp,
+                                                        color = textSecondary,
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (sampleLesson != null && sampleLesson.blocks.isNotEmpty()) {
+                                Surface(
+                                    color = if (isDarkMode) Color(0xFF0B1222) else Color(0xFFF1F5F9),
+                                    border = BorderStroke(1.dp, borderColor),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.padding(12.dp),
+                                    ) {
+                                        Text(
+                                            text = "LESSON 1 SAMPLE",
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = brandAccent,
+                                        )
+                                        Text(
+                                            text = sampleLesson.title,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = textPrimary,
+                                        )
+                                        sampleLesson.blocks.take(4).forEach { blk ->
+                                            when (blk.type) {
+                                                "header" -> Text(
+                                                    text = blk.text.orEmpty(),
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = textPrimary,
+                                                )
+                                                "body" -> Text(
+                                                    text = blk.text.orEmpty(),
+                                                    fontSize = 11.5.sp,
+                                                    color = textSecondary,
+                                                    maxLines = 4,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                                "bullets" -> blk.items.take(3).forEach { bullet ->
+                                                    Text(
+                                                        text = "• $bullet",
+                                                        fontSize = 11.5.sp,
+                                                        color = textSecondary,
+                                                    )
+                                                }
+                                                "video" -> Text(
+                                                    text = "Includes offline video: ${blk.caption ?: "Training briefing"}",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = brandAccent,
+                                                )
+                                                "image" -> Text(
+                                                    text = "Includes diagram: ${blk.caption ?: "Lesson illustration"}",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = brandAccent,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            TextButton(onClick = { dismissWithAnimation(onDismiss) }) {
+                                Text("Close")
+                            }
+                            Button(
+                                onClick = { dismissWithAnimation(onPrimaryAction) },
+                                enabled = isDownloaded || isConnected,
+                                colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
+                            ) {
+                                Text(
+                                    text = if (isDownloaded) "Open Saved" else if (isConnected) "Download Course" else "Offline",
+                                    color = Color.White,
+                                )
                             }
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = onPrimaryAction,
-                enabled = isDownloaded || isConnected,
-                colors = ButtonDefaults.buttonColors(containerColor = brandAccent),
-            ) {
-                Text(
-                    text = if (isDownloaded) "Open Saved" else if (isConnected) "Download Course" else "Offline",
-                    color = Color.White,
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
-        },
-    )
+        }
+    }
 }
 
 
