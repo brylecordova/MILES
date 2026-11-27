@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
   AlertCircle,
@@ -7,6 +7,7 @@ import {
   ArrowUp,
   Award,
   BarChart3,
+  Bell,
   BookOpen,
   CheckCircle2,
   ClipboardCheck,
@@ -180,6 +181,11 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     message: string;
     certificateCode?: string;
   } | null>(null);
+  const [realtimeToast, setRealtimeToast] = useState<{
+    id: string;
+    submission: CourseSubmission;
+  } | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   // System Branding & App Distribution State
   const [brandingDraft, setBrandingDraft] = useState<Omit<SystemBranding, 'updatedAt'>>({
@@ -240,6 +246,100 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
     if (authed) {
       refreshAdminData();
     }
+  }, [authed]);
+
+  useEffect(() => {
+    if (!realtimeToast) return;
+    const timer = window.setTimeout(() => {
+      setRealtimeToast((prev) => (prev?.id === realtimeToast.id ? null : prev));
+    }, 12000);
+    return () => window.clearTimeout(timer);
+  }, [realtimeToast]);
+
+  useEffect(() => {
+    if (!authed) {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      return;
+    }
+
+    let disposed = false;
+    let reconnectTimer: number | null = null;
+    let retryDelayMs = 1500;
+
+    const connect = () => {
+      if (disposed) return;
+      const token = getAdminToken();
+      if (!token) return;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(
+        `${protocol}//${window.location.host}/ws/admin?token=${encodeURIComponent(token)}`
+      );
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        retryDelayMs = 1500;
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(String(event.data || '{}')) as {
+            type?: string;
+            submission?: CourseSubmission;
+          };
+          if (msg.type === 'submission:created' && msg.submission) {
+            const incoming = msg.submission;
+            setSubmissions((prev) =>
+              prev.some((s) => s._id === incoming._id) ? prev : [incoming, ...prev]
+            );
+            setRealtimeToast({ id: incoming._id, submission: incoming });
+            api
+              .getAdminAnalytics()
+              .then((res) => setAnalyticsReport(res.report))
+              .catch(() => {});
+          } else if (msg.type === 'submission:updated' && msg.submission) {
+            const updated = msg.submission;
+            setSubmissions((prev) =>
+              prev.some((s) => s._id === updated._id)
+                ? prev.map((s) => (s._id === updated._id ? updated : s))
+                : [updated, ...prev]
+            );
+            setSelectedSub((prev) => (prev && prev._id === updated._id ? updated : prev));
+            api
+              .getAdminAnalytics()
+              .then((res) => setAnalyticsReport(res.report))
+              .catch(() => {});
+          }
+        } catch {
+          // Ignore malformed WS messages
+        }
+      };
+
+      ws.onclose = () => {
+        if (wsRef.current === ws) {
+          wsRef.current = null;
+        }
+        if (!disposed && getAdminToken()) {
+          reconnectTimer = window.setTimeout(connect, retryDelayMs);
+          retryDelayMs = Math.min(10000, retryDelayMs * 2);
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
   }, [authed]);
 
   async function refreshAdminData() {
@@ -2949,6 +3049,59 @@ export const AdminStudio: React.FC<AdminStudioProps> = ({
         );
       }}
     />
+
+    {realtimeToast && (
+      <div
+        role="status"
+        aria-live="polite"
+        data-testid="realtime-submission-toast"
+        className="fixed right-4 bottom-4 z-50 w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-blue-200 bg-white/95 p-3.5 shadow-xl backdrop-blur-xl dark:border-sky-800/70 dark:bg-slate-900/95"
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-sky-950/70 dark:text-sky-400">
+            <Bell className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-slate-900 dark:text-white">
+              New Submission Received
+            </p>
+            <p className="mt-0.5 truncate text-xs text-slate-600 dark:text-slate-300">
+              {realtimeToast.submission.userName} · {realtimeToast.submission.courseTitle}
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="font-mono-tabular rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900 dark:bg-amber-950/70 dark:text-amber-200">
+                Score {realtimeToast.submission.overallScore}%
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const sub = realtimeToast.submission;
+                  setAdminTab('submissions');
+                  setDraft(null);
+                  setSubFilter('all');
+                  setSelectedSub(sub);
+                  setReviewFeedback(sub.adminFeedback ?? '');
+                  setPendingReviewDecision(null);
+                  setReviewResultBanner(null);
+                  setRealtimeToast(null);
+                }}
+                className="rounded-lg bg-blue-700 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+              >
+                View
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRealtimeToast(null)}
+            aria-label="Dismiss new submission notification"
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    )}
     </MotionConfig>
   );
 };

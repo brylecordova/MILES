@@ -611,7 +611,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     type="search"
                     value={courseSearch}
                     onChange={(e) => setCourseSearch(e.target.value)}
-                    placeholder="Search courses by title or description..."
+                    placeholder="Search courses..."
                     className="min-h-[44px] w-full rounded-xl border border-slate-300/90 bg-white/90 pr-10 pl-10 text-sm text-slate-900 placeholder:text-slate-400 backdrop-blur-md focus:border-blue-600 focus:outline-none dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100 dark:focus:border-sky-400"
                   />
                   {courseSearch && (
@@ -854,10 +854,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                               {course.certificateTitle}
                             </p>
                           </div>
-                          <span className="inline-flex shrink-0 items-center gap-1.5 font-semibold text-blue-700 transition-transform group-hover:translate-x-0.5 dark:text-sky-400">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPreviewCourse(course);
+                            }}
+                            className="inline-flex min-h-[34px] shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/80 px-2.5 font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-sky-800/70 dark:bg-sky-950/60 dark:text-sky-300 dark:hover:bg-sky-900/60"
+                          >
                             <Eye className="h-3.5 w-3.5" />
                             <span>Preview Course</span>
-                          </span>
+                          </button>
                         </div>
                       </div>
                     </motion.article>

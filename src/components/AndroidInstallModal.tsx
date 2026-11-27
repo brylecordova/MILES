@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Download, ExternalLink, Film, ShieldCheck, X } from 'lucide-react';
 import type { SystemBranding } from '../types/training';
 import { downloadUploadedApk } from '../utils/api';
-import { AndroidIcon } from './AndroidIcon';
+import { DEFAULT_SYSTEM_ICON_URL } from '../utils/certificateDefaults';
 
 interface AndroidInstallModalProps {
   open: boolean;
@@ -47,9 +47,11 @@ export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({
       <div className="w-full max-w-lg rounded-t-3xl border border-slate-200 bg-white/95 p-6 shadow-xl backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/95 sm:rounded-2xl">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-sky-950/70 dark:text-sky-300">
-              <AndroidIcon className="h-5 w-5" />
-            </div>
+            <img
+              src={branding.iconUrl || DEFAULT_SYSTEM_ICON_URL}
+              alt={`${branding.systemName} icon`}
+              className="h-10 w-10 shrink-0 rounded-xl object-contain"
+            />
             <div>
               <h2
                 id="android-install-title"

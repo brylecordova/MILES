@@ -1,0 +1,29 @@
+{
+  "name": "MiLES — Mobile Learning Experience System",
+  "short_name": "MiLES",
+  "description": "Offline-ready mobile training with configurable quizzes, admin curriculum studio, and verifiable PDF certificates.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#112858",
+  "theme_color": "#1d4ed8",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

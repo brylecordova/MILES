@@ -6,6 +6,7 @@ import {
   Clock,
   CloudOff,
   Download,
+  Eye,
   FileText,
   Mail,
   Play,
@@ -22,8 +23,10 @@ import type {
   PendingOfflineSubmission,
   UserAccount,
 } from '../types/training';
+import { getDefaultSystemBranding } from '../utils/certificateDefaults';
 import { formatBytes, type DownloadedCoursePackage } from '../utils/offlineDb';
 import { CertificateModal } from './CertificateModal';
+import { CoursePreviewModal } from './CoursePreviewModal';
 import { CourseBannerImage } from './MediaRenderer';
 import { CourseSummaryView } from './CourseSummaryView';
 
@@ -75,6 +78,7 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
   const [inspectingPending, setInspectingPending] = useState<PendingOfflineSubmission | null>(null);
   const [inspectingSubmission, setInspectingSubmission] = useState<CourseSubmission | null>(null);
   const [activeCertificate, setActiveCertificate] = useState<CertificateRecord | null>(null);
+  const [previewCourse, setPreviewCourse] = useState<Course | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
@@ -301,48 +305,58 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
                         {course.description}
                       </p>
 
-                      <div className="mt-5 border-t border-slate-100 pt-4 dark:border-slate-800">
-                        {isDownloaded ? (
+                      <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => onOpenCoursePlayer(course._id)}
-                            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                            onClick={() => setPreviewCourse(course)}
+                            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                           >
-                            <Play className="h-4 w-4" />
-                            <span>Downloaded · Open Course</span>
+                            <Eye className="h-4 w-4" />
+                            <span>Preview</span>
                           </button>
-                        ) : typeof pct === 'number' ? (
-                          <div className="space-y-1.5">
-                            <div className="flex justify-between text-xs font-medium text-blue-700 dark:text-sky-400">
-                              <span>Downloading lessons &amp; media...</span>
-                              <span className="font-mono-tabular">{pct}%</span>
+                          {isDownloaded ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenCoursePlayer(course._id)}
+                              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                            >
+                              <Play className="h-4 w-4" />
+                              <span>Open Course</span>
+                            </button>
+                          ) : typeof pct === 'number' ? (
+                            <div className="flex-1 space-y-1.5">
+                              <div className="flex justify-between text-xs font-medium text-blue-700 dark:text-sky-400">
+                                <span>Downloading...</span>
+                                <span className="font-mono-tabular">{pct}%</span>
+                              </div>
+                              <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                                <div
+                                  className="h-full bg-blue-700 transition-all dark:bg-sky-500"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
                             </div>
-                            <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                              <div
-                                className="h-full bg-blue-700 transition-all dark:bg-sky-500"
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={isOffline}
-                            onClick={() => {
-                              if (!user) {
-                                onRequireAuth();
-                                return;
-                              }
-                              onDownloadCourse(course);
-                            }}
-                            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800 disabled:bg-slate-200 disabled:text-slate-500 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
-                          >
-                            <Download className="h-4 w-4" />
-                            <span>
-                              {isOffline ? 'Reconnect to Download' : 'Download for Offline'}
-                            </span>
-                          </button>
-                        )}
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isOffline}
+                              onClick={() => {
+                                if (!user) {
+                                  onRequireAuth();
+                                  return;
+                                }
+                                onDownloadCourse(course);
+                              }}
+                              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800 disabled:bg-slate-200 disabled:text-slate-500 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                            >
+                              <Download className="h-4 w-4" />
+                              <span>
+                                {isOffline ? 'Offline' : 'Download'}
+                              </span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </article>
@@ -801,6 +815,20 @@ export const LearnerWorkspace: React.FC<LearnerWorkspaceProps> = ({
         onUpdated={(updated) => {
           setActiveCertificate(updated);
           onCertificateUpdated(updated);
+        }}
+      />
+
+      <CoursePreviewModal
+        course={previewCourse}
+        branding={getDefaultSystemBranding()}
+        accent="#1d4ed8"
+        isDark={false}
+        onClose={() => setPreviewCourse(null)}
+        onOpenInstall={() => {
+          if (previewCourse) {
+            onDownloadCourse(previewCourse);
+            setPreviewCourse(null);
+          }
         }}
       />
     </div>

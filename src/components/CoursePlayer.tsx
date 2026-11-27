@@ -486,66 +486,69 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
           </div>
 
           {quizFeedback && quizFeedback.quizId === currentModule.id ? (
-            <div className="mt-6 space-y-5">
+            <div className="mx-auto my-8 max-w-xl">
               <div
-                className={`rounded-2xl border p-6 ${
+                className={`rounded-3xl border p-8 text-center shadow-sm sm:p-10 ${
                   quizFeedback.passed
                     ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800/60 dark:bg-emerald-950/40'
                     : 'border-red-200 bg-red-50 dark:border-red-900/60 dark:bg-red-950/40'
                 }`}
               >
-                <div className="flex items-start gap-3">
-                  {quizFeedback.passed ? (
-                    <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-700 dark:text-emerald-400" />
-                  ) : (
-                    <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-red-700 dark:text-red-400" />
-                  )}
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                      {quizFeedback.passed
-                        ? `Quiz Passed (${quizFeedback.score}%)`
-                        : `Score ${quizFeedback.score}% — Below ${quizFeedback.passingScore}% Threshold`}
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
-                      {quizFeedback.passed
-                        ? 'You met the passing threshold. Advance to the next step.'
-                        : quizFeedback.restartMessage}
-                    </p>
+                <div className="mx-auto flex flex-col items-center">
+                  <div
+                    className={`flex h-16 w-16 items-center justify-center rounded-2xl ${
+                      quizFeedback.passed
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/70 dark:text-emerald-300'
+                        : 'bg-red-100 text-red-700 dark:bg-red-900/70 dark:text-red-300'
+                    }`}
+                  >
+                    {quizFeedback.passed ? (
+                      <CheckCircle2 className="h-9 w-9" />
+                    ) : (
+                      <AlertTriangle className="h-9 w-9" />
+                    )}
                   </div>
+                  <p className="font-mono-tabular mt-4 text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+                    {quizFeedback.score}%
+                  </p>
+                  <h2 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
+                    {quizFeedback.passed
+                      ? 'Quiz Passed'
+                      : `Below ${quizFeedback.passingScore}% Passing Score`}
+                  </h2>
+                  <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                    {quizFeedback.passed
+                      ? 'You met the passing threshold. Advance to the next step.'
+                      : quizFeedback.restartMessage}
+                  </p>
                 </div>
-              </div>
 
-              <button
-                type="button"
-                onClick={handleAdvanceAfterQuiz}
-                className={`flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl px-6 text-sm font-semibold text-white sm:w-auto ${
-                  quizFeedback.passed
-                    ? 'bg-emerald-700 hover:bg-emerald-800'
-                    : 'bg-slate-900 hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950'
-                }`}
-              >
-                {quizFeedback.passed ? (
-                  <>
-                    <span>
-                      {progress.currentModuleIndex >= course.modules.length - 1
-                        ? 'View Course Summary'
-                        : 'Proceed to Next Module'}
-                    </span>
-                    <ChevronRight className="h-4 w-4" />
-                  </>
-                ) : (
-                  <>
-                    <RotateCcw className="h-4 w-4" />
-                    <span>
-                      {currentModule.failureRule === 'retry_quiz'
-                        ? 'Retry Quiz Now'
-                        : currentModule.failureRule === 'restart_course'
-                        ? 'Restart Course from Lesson 1'
-                        : 'Return to Section Start'}
-                    </span>
-                  </>
-                )}
-              </button>
+                <button
+                  type="button"
+                  onClick={handleAdvanceAfterQuiz}
+                  className={`mt-7 flex min-h-[54px] w-full items-center justify-center gap-2 rounded-2xl px-8 text-base font-bold text-white shadow-xs ${
+                    quizFeedback.passed
+                      ? 'bg-emerald-700 hover:bg-emerald-800'
+                      : 'bg-slate-900 hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
+                  }`}
+                >
+                  {quizFeedback.passed ? (
+                    <>
+                      <span>
+                        {progress.currentModuleIndex >= course.modules.length - 1
+                          ? 'View Course Summary'
+                          : 'Continue'}
+                      </span>
+                      <ChevronRight className="h-5 w-5" />
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="h-5 w-5" />
+                      <span>Retry</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           ) : (
             <form

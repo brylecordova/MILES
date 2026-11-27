@@ -2,10 +2,12 @@ import 'dotenv/config';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import nodemailer from 'nodemailer';
 import { createServer as createViteServer } from 'vite';
+import { WebSocket, WebSocketServer } from 'ws';
 import { syncAndroidProjectBranding } from './server/androidBranding.ts';
 import { db, type StoredUser } from './server/db.ts';
 import type {
@@ -342,6 +344,44 @@ async function startServer() {
   }
 
   const app = express();
+  const httpServer = http.createServer(app);
+  const wss = new WebSocketServer({ noServer: true });
+  const adminSockets = new Set<WebSocket>();
+
+  function broadcastToAdmins(event: Record<string, unknown>) {
+    const serialized = JSON.stringify(event);
+    for (const client of adminSockets) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(serialized);
+      }
+    }
+  }
+
+  httpServer.on('upgrade', (req, socket, head) => {
+    try {
+      const reqUrl = new URL(req.url || '/', 'http://localhost');
+      if (reqUrl.pathname !== '/ws/admin') {
+        socket.destroy();
+        return;
+      }
+      const token = reqUrl.searchParams.get('token') || '';
+      const payload = verifyToken(token);
+      if (!payload || payload.role !== 'admin') {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        adminSockets.add(ws);
+        ws.on('close', () => adminSockets.delete(ws));
+        ws.on('error', () => adminSockets.delete(ws));
+        ws.send(JSON.stringify({ type: 'connected' }));
+      });
+    } catch {
+      socket.destroy();
+    }
+  });
+
   app.use(express.json({ limit: '25mb' }));
   app.use('/media', express.static(path.resolve(process.cwd(), 'public', 'media')));
   app.use('/uploads', express.static(UPLOADS_DIR));
@@ -656,6 +696,14 @@ async function startServer() {
         res.status(404).json({ error: 'Course not found.' });
         return;
       }
+      const userSubmissions = await db.listSubmissionsByUser(req.learner!._id);
+      const hasFinishedCourse = userSubmissions.some((sub) => sub.courseId === id);
+      if (!hasFinishedCourse) {
+        res.status(403).json({
+          error: 'Please finish and submit this course before rating it.',
+        });
+        return;
+      }
       const updated = applyCourseRating(course, req.learner!._id, validRating);
       await db.updateCourse(id, updated);
       res.json({ course: toPublicCourseWithRatings(updated, req.learner!._id) });
@@ -827,6 +875,7 @@ async function startServer() {
       };
 
       await db.createSubmission(submission);
+      broadcastToAdmins({ type: 'submission:created', submission });
       res.status(201).json({ submission });
     } catch (err) {
       console.error('Submission error:', err);
@@ -1040,6 +1089,7 @@ async function startServer() {
         certificateId: certificate?._id ?? submission.certificateId,
       };
       await db.updateSubmission(id, updated);
+      broadcastToAdmins({ type: 'submission:updated', submission: updated });
       res.json({ submission: updated, certificate });
     } catch (err) {
       console.error('Review error:', err);
@@ -1252,7 +1302,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`CertiField server listening on http://localhost:${PORT} [${db.getMode()}]`);
   });
 }
